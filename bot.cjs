@@ -25,7 +25,7 @@ class Bot {
         + "/help - помощь типа. надеюсь её кто-нибудь когда-нибудь напишет..\n"
       //this.db.get(msg.from.username).get("friends").put({});
 
-      const u = this.db.get("users").get(msg.from.username).put({ "id": msg.from.id, "tags": this.tags.tags });
+      const u = this.db.get("users").get(msg.from.username).put({ "id": msg.from.id, "tags": this.tags.tags, "chat":true });
       this.bot.sendMessage(msg.chat.id, this.i18n.__("start"));
     });
     this.bot.onText(/\/friends$/gmi, async (msg, match) => {
