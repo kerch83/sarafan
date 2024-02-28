@@ -3,11 +3,13 @@ class Bot {
   commands = {
     "friend": "Добавить друзей(подписаться на их сообщения)"
   };
-  constructor(token, db, i18n) {
+  constructor(token, db, i18n, tags) {
     const TelegramBot = require('node-telegram-bot-api');
     this.bot = new TelegramBot(token, { polling: true });
     this.db = db;
     this.i18n = i18n;
+    this.tags = this.parseString(tags);
+    console.log("this.tags",this.tags, tags);
   }
   start() {
     console.log("bot started");
@@ -23,7 +25,7 @@ class Bot {
         + "/help - помощь типа. надеюсь её кто-нибудь когда-нибудь напишет..\n"
       //this.db.get(msg.from.username).get("friends").put({});
 
-      const u = this.db.get("users").get(msg.from.username).put({ "id": msg.from.id });
+      const u = this.db.get("users").get(msg.from.username).put({ "id": msg.from.id, "tags": this.tags.tags });
       this.bot.sendMessage(msg.chat.id, this.i18n.__("start"));
     });
     this.bot.onText(/\/friends$/gmi, async (msg, match) => {
@@ -71,7 +73,18 @@ class Bot {
       this.bot.sendMessage(msg.chat.id, "в разработке");
     });
 
+    this.bot.onText(/^\/chat_on$/gmi, async (msg, match) => {
+      this.db.get("users").get(msg.from.username).put({ "chat": true }).once((val) => {
+        console.log("chat_on", val);
+        this.bot.sendMessage(msg.chat.id, "режим чата включен ( online)");//TODO количество онлайн
+      });
+    });
 
+    this.bot.onText(/^\/chat_off$/gmi, async (msg, match) => {
+      this.db.get("users").get(msg.from.username).put({ "chat": false });
+      this.bot.sendMessage(msg.chat.id, "режим чата выключен");//TODO количество онлайн
+    });
+    
     this.bot.onText(/^#(.*) (.*)$/, (msg, match) => {
       return;
       const chatId = msg.chat.id;
@@ -117,7 +130,7 @@ class Bot {
       //TODO в будущем тут 3 варианта - друзья(13), друзья друзей(234), друзья друзей друзей(3423)
       //важность и охват регулируются количеством восклицательных знаков в начале !!!
       var text = match.input;
-      console.log("onText", text, msg.chat, match);
+      console.log("-->", msg.chat.username, msg.chat.id, text);
       if (text.startsWith("/")) { return };//команды пропускаем
 
       const username = msg.from.username;
@@ -133,7 +146,8 @@ class Bot {
       console.log("parse", parse);
       text = pretext + text;
       const u = this.db.get("users").get(username).put({ "id": msg.from.id });
-      const m = u.get("texts").set(text);
+      //const m = u.get("texts").set(text);//сохранять чат не надо. только посты
+      //TODO определять посты и сохранять их. и отсылать тем у кого режим чата выключен тоже. т.е. всем кто подписан на тег
       parse.addr.forEach((user) => {
         if (user !== username) {
           u.get("friends").get(user).put({});
@@ -163,8 +177,12 @@ class Bot {
       //TODO это режим чата выходит. его можно включать/выключать командой
       //а если на сообщение ответили то оно становится постом? точнее оно становится видно новым людям по мере реакций/ответов
       //и еще команда /chat_radius 10 - задает количество км, если 0 то всем.
-      console.log("send to friends");
-      u.get("friends").once((val) => {
+      //console.log("send to friends");
+      //пока посылаем всем..?
+      //TODO надо посылать только в текущий тег
+      console.log("send to chat");
+      //u.get("friends")
+      this.db.get("users").once((val) => {
         if (!val) { console.log(val); return; }
         console.log("chat", val);
         console.log(Object.keys(val));
@@ -196,10 +214,10 @@ class Bot {
     Object.keys(value).forEach((val) => {
       console.log("get from gun.users", val);
       const user = this.db.get("users").get(val);
-      user.get("id").once((uu) => {
+      user.once((uu) => {
         console.log("uu", uu);
-        if(!uu){return}
-        const id = uu;
+        if(!uu || !uu.chat){return}//если режим чата отключен - пропускаем
+        const id = uu.id;
         //const friends = uu.friends;
         if (val == username || !id){return};
         //console.log("chat send to", val, id);
@@ -208,7 +226,7 @@ class Bot {
           this.bot.sendMessage(id, text)
         }
       });
-      if (wave<0){
+      if (wave<0){//TODO переделать через очередь в gun. тут только записывать юзерам что им надо отправить
       user.get("friends").once((val) => {
         if (!val) { console.log(val); return; }
         console.log("chat wave", wave, val);
