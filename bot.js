@@ -28,11 +28,11 @@ class Bot {
     return this.db.get("geotree");
   }
   connectUsers() {
-    this.db.get("users").on(users => {
+    this.db.get("users").once(users => {
       Object.keys(users).forEach(user => {
-        console.log(user);
+        console.log("connectUser", user);
         this.db.get("users").get(user).once(u => {
-          console.log(u.nowtag);
+          console.log("user tag ", u.nowtag);
           if (u.chat) {
             this.connect(user)
           }
@@ -244,7 +244,10 @@ class Bot {
       //console.log("send to friends");
       //пока посылаем всем..?
       //TODO надо посылать только в текущий тег
-      console.log("send to chat");
+      console.log("send to chat");//, u.get("nowtag"));
+      u.get("nowtag").get("chat").put(text);
+      return;//хм
+      //u.get("")
       //u.get("friends")
       this.db.get("users").once((val) => {
         if (!val) { console.log(val); return; }
