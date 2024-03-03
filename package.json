@@ -5,7 +5,9 @@
   "dependencies": {
     "gun": "^0.2020.1239",
     "i18n": "^0.15.1",
-    "node-telegram-bot-api": "^0.64.0"
+    "node-telegram-bot-api": "^0.64.0",
+    "nominatim-client": "^3.2.1",
+    "nominatim-geocoder": "^0.1.4"
   },
   "type": "module",
   "version": "0.0.1"

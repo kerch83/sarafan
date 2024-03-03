@@ -1,27 +1,39 @@
 import pkg from './package.json' assert { type: "json" };
 import TelegramBot from 'node-telegram-bot-api';
+import nominatim from 'nominatim-client';
+const client = nominatim.createClient({
+  useragent: "sarafan",             // The name of your application
+  referer: 'http://srfn.su',  // The referer link
+});
 class Bot {
   commands = {
     "friend": "Добавить друзей(подписаться на их сообщения)"
   };
   constructor(token, db, i18n, tags) {
     //    const TelegramBot = require('node-telegram-bot-api');
+    this.nominatim = client;
     this.bot = new TelegramBot(token, { polling: true });
     this.db = db;
     this.i18n = i18n;
     this.tags = this.parseString(tags);
     console.log("this.tags", this.tags, tags);
     this.geo = this.connectGeo();
-    var tr = this.db.get("blocktree");
-    var path = "/";
-    this.tags.tags.forEach(tag => {
-      tr = tr.get("tags").get(tag).put({ path: path, name: tag, parent: tr });
-      path = path + tag + "/";
-    });
-    this.startTag = tr;
-    tr.get("debug").put("bot started ver " + pkg.version.toString());
+    this.startTag = this.createTree("blocktree", this.tags.tags);
+    //this.startTag = tr;
+    this.startTag.get("debug").put("bot started ver " + pkg.version.toString());
     this.connectUsers();
-    console.log("start bot ver", pkg.version);
+    console.log("start bot ver", pkg.version.toString());
+  }
+  createTree(tree, tags) {
+    var tr = this.db.get(tree);
+    var path = "#";
+    console.log("createTree", tree, tags);
+    tags.forEach(tag => {
+      //console.log();
+      tr = tr.get("tags").get(tag).put({ path: path, name: tag });
+      path = path + tag + "#";
+    })
+    return tr;
   }
   connectGeo() {
     //TODO подключить номинатум и загрузить сразу дерево? или добавлять по мере подключения юзеров?
@@ -50,11 +62,14 @@ class Bot {
       console.log("connect", user, t, channel);
       if (!t) { return }
       this.db.get(t).once(val => {
-        this.bot.sendMessage(u.id, "Вы подключились к " + val?.path + val.name + "->" + channel);
+        console.log("connect tag", t, val)
+        this.bot.sendMessage(u.id, "Вы подключились к " + val?.path + val.name);
       });
       this.db.get(t).get(channel).on(val => {
-        console.log("--->>>>>>send message to ", user, val);
-        this.bot.sendMessage(u.id, val);
+        console.log("--->>>>>>send message to ", user, val, channel);
+        if (channel === "debug" || val.username !== user) {
+          this.bot.sendMessage(u.id, val.text);
+        }
       })
     })
   }
@@ -71,12 +86,13 @@ class Bot {
         + "/filter 1 - фильтровать сообщения по количеству цепочек доверия к человеку\n"
         + "/help - помощь типа. надеюсь её кто-нибудь когда-нибудь напишет..\n"
       //this.db.get(msg.from.username).get("friends").put({});
-
-      const u = this.db.get("users").get(msg.from.username);
+      const username = msg.from.username;
+      const u = this.db.get("users").get(username);
       u.get("id").put(msg.from.id);
       u.get("nowtag").put(this.startTag);
       u.get("chat").put(true);
-      this.connect(msg.from.username);
+      u.get("username").put(username);
+      this.connect(username);
       this.bot.sendMessage(msg.chat.id, this.i18n.__("start"));
     });
     this.bot.onText(/\/tags$/gmi, async (msg, match) => {
@@ -97,6 +113,37 @@ class Bot {
       //      const text = "список друзей\n"+JSON.stringify(friends);
       //      console.log("send friend list", username, friends, text, user);
       //      this.bot.sendMessage(msg.chat.id, text);
+    });
+    this.bot.onText(/\/livelocation/, async msg => {
+      this.bot.sendLocation(msg.chat.id, 0, 0, {
+        live_period: 86400,
+      });
+    });
+    this.bot.on('location', async (msg) => {
+      console.log(msg.location.latitude);
+      console.log(msg.location.longitude, this.geo);
+      const units = await this.nominatim.reverse({
+        lat: msg.location.latitude,
+        lon: msg.location.longitude
+      }
+      );
+      const addr = units.address;
+      console.log(units.address);
+      var geotree = [];
+      const a = [addr.country, addr.region, addr.state, addr.county, addr.city, addr.town];
+      a.forEach(addr => {
+        if (addr) {
+          geotree.push(addr);
+        };
+      })
+      const geo = this.createTree("geo", geotree);
+      console.log("geotree", geotree);
+      const username = msg.from.username;
+      this.db.get("users").get(username).get("nowtag").put(geo);
+      this.connect(username, "chat", geo);
+      //this.startTag = tr;
+      const text = "присоединился @" + username;
+      geo.get("chat").put({text, username});
     });
     this.bot.onText(/^\/friends (.*)$/gmi, async (msg, match) => {
       return;
@@ -148,6 +195,15 @@ class Bot {
       this.db.get("users").get(msg.from.username).put({ "debug": false });
       this.bot.sendMessage(msg.chat.id, "режим отладки выключен");//TODO количество онлайн
     });
+
+    this.bot.onText(/^\/me$/gmi, async (msg, match) => {
+      console.log("/me call");
+      this.db.get("users").get(msg.from.username).once( val => {
+        console.log("/me call", val);
+        this.bot.sendMessage(msg.chat.id, val);//TODO количество онлайн
+      });
+    });
+
 
     this.bot.onText(/^#(.*) (.*)$/, (msg, match) => {
       return;
@@ -205,6 +261,8 @@ class Bot {
       } else {
         pretext = "@" + username + " ";//TODO если начинается с вопроса - то анонимно
       }
+      pretext = "";//пока все сообщения анонимные
+      //TODO сделать возможность ответа!! там можно прислать свои данные?
       console.log("before parse");
       var parse = this.parseString(text);
       console.log("parse", parse);
@@ -240,12 +298,13 @@ class Bot {
       if (!(parse.addr.length == 0 && parse.tags.length == 0)) { return; }//если нет ни тегов ни людей, то просто всем друзьям друзей?
       //TODO это режим чата выходит. его можно включать/выключать командой
       //а если на сообщение ответили то оно становится постом? точнее оно становится видно новым людям по мере реакций/ответов
-      //и еще команда /chat_radius 10 - задает количество км, если 0 то всем.
+      //и еще команда /chat_radius 10 - задает количество км, если 0 то всем? может быть ситуация что части диалога не видно?
+      //лучше выбирать в гео-дереве самому? 
       //console.log("send to friends");
       //пока посылаем всем..?
       //TODO надо посылать только в текущий тег
       console.log("send to chat");//, u.get("nowtag"));
-      u.get("nowtag").get("chat").put(text);
+      u.get("nowtag").get("chat").put({ text, username });
       return;//хм
       //u.get("")
       //u.get("friends")
