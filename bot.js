@@ -61,16 +61,17 @@ class Bot {
       const t = tag ?? u.nowtag;
       console.log("connect", user, t, channel);
       if (!t) { return }
-      this.db.get(t).once(val => {
-        console.log("connect tag", t, val)
-        this.bot.sendMessage(u.id, "Вы подключились к " + val?.path + val.name);
+      this.db.get(t).once(tval => {
+        console.log("connect tag", t, tval)
+        this.bot.sendMessage(u.id, "Вы подключились к " + tval?.path + tval.name);
+        this.db.get(t).get(channel).on(val => {
+          console.log("--->>>>>>send message to ", user, val.text, channel);
+          if (u.debug || val.username !== user) {
+            this.bot.sendMessage(u.id, tval?.path + tval.name + " " + val.text);
+          }
+        })
+
       });
-      this.db.get(t).get(channel).on(val => {
-        console.log("--->>>>>>send message to ", user, val, channel);
-        if (channel === "debug" || val.username !== user) {
-          this.bot.sendMessage(u.id, val.text);
-        }
-      })
     })
   }
   start() {
@@ -143,7 +144,7 @@ class Bot {
       this.connect(username, "chat", geo);
       //this.startTag = tr;
       const text = "присоединился @" + username;
-      geo.get("chat").put({text, username});
+      geo.get("chat").put({ text, username });
     });
     this.bot.onText(/^\/friends (.*)$/gmi, async (msg, match) => {
       return;
@@ -198,7 +199,7 @@ class Bot {
 
     this.bot.onText(/^\/me$/gmi, async (msg, match) => {
       console.log("/me call");
-      this.db.get("users").get(msg.from.username).once( val => {
+      this.db.get("users").get(msg.from.username).once(val => {
         console.log("/me call", val);
         this.bot.sendMessage(msg.chat.id, val);//TODO количество онлайн
       });
