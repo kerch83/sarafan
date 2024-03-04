@@ -30,8 +30,8 @@ class Bot {
     console.log("createTree", tree, tags);
     tags.forEach(tag => {
       //console.log();
-      tr = tr.get("tags").get(tag).put({ path: path, name: tag });
-      path = path + tag + "#";
+      tr = tr.get("tags").get(tag).put({ path: path, name: tag, parent: tr });
+      path = path + tag + " #";
     })
     return tr;
   }
@@ -51,6 +51,16 @@ class Bot {
           if (u.debug) {
             this.connect(user, "debug")
           }
+        });
+        this.db.get("users").get(user).get("nowtag").on(t => {
+          console.log(user, u.id, u.message_id, "nowtag on", t);
+          //TODO что-то тут нужно будет делать
+          const ret = this.bot.editMessageText("tttttt", 
+            {
+              chat_id: u.id,
+              message_id: u.message_id
+            });
+      
         })
       })
       //console.log(users);
@@ -63,16 +73,19 @@ class Bot {
       if (!t) { return }
       this.db.get(t).once(tval => {
         console.log("connect tag", t, tval)
-        this.bot.sendMessage(u.id, "Вы подключились к " + tval?.path + tval.name);
+        this.bot.sendMessage(u.id, "Вы подключились к "+channel+" в сообществе " + tval?.path + tval.name);
         this.db.get(t).get(channel).on(val => {
-          console.log("--->>>>>>send message to ", user, val.text, channel);
+          console.log("--->>>>>>send message to ", user, val, channel);
+          if (!val.text) {return}
           if (u.debug || val.username !== user) {
             this.bot.sendMessage(u.id, tval?.path + tval.name + " " + val.text);
           }
         })
-
       });
     })
+  }
+  tagText(value){
+    return "вы находитесь в сообществе " + value.path + value.name + "\n" + (value.description ?? "описание сообщества/можно добавить своё");
   }
   start() {
     console.log("bot started");
@@ -97,23 +110,38 @@ class Bot {
       this.bot.sendMessage(msg.chat.id, this.i18n.__("start"));
     });
     this.bot.onText(/\/tags$/gmi, async (msg, match) => {
-
-      console.log("<--/tags", match, msg);
+      console.log("<--/tags11111", msg.from.username);
       //const text = this.db.get("")
       const username = msg.from.username;
       const user = this.db.get("users").get(username);
-      user.once((value, key) => {
+      user.get("nowtag").once((value, key) => {
         console.log("key->value", key, value);
-        const text = "список тегов\n" + JSON.stringify(value);
+        const text = this.tagText(value);
         console.log("send tags list", username, text);
-        this.bot.sendMessage(msg.chat.id, text);
+        this.bot.sendMessage(msg.chat.id, text, this.keyboard()).then(msg => {
+          console.log("sendMessage", msg.chat.username, msg.message_id);
+          user.get("message_id").put(msg.message_id);
+        });
       });
-      //console.log(friends);
-      //const val = friends.once();
-      //console.log(val);
-      //      const text = "список друзей\n"+JSON.stringify(friends);
-      //      console.log("send friend list", username, friends, text, user);
-      //      this.bot.sendMessage(msg.chat.id, text);
+    });
+    this.bot.onText(/\/geos$/gmi, async (msg, match) => {
+      console.log("<--geos11111", msg.from.username);
+      //const text = this.db.get("")
+      const username = msg.from.username;
+      const user = this.db.get("users").get(username);
+      user.get("nowgeo").once((value, key) => {
+        console.log("key->value", key, value);
+        var text = "";
+        if (value){
+          text = "вы находитесь в гео-сообществе " + value.path + value.name + "\n"+ value.description ?? "описание сообщества";
+        } else{
+          text = "вы находитесь в гео-сообществе Земля";
+        }
+        console.log("send geo-tree", username, text);
+        this.bot.sendMessage(msg.chat.id, text, this.keyboard("geo")).then(msg => {
+          console.log("sendMessage", msg);
+        });
+      });
     });
     this.bot.onText(/\/livelocation/, async msg => {
       this.bot.sendLocation(msg.chat.id, 0, 0, {
@@ -131,7 +159,7 @@ class Bot {
       const addr = units.address;
       console.log(units.address);
       var geotree = [];
-      const a = [addr.country, addr.region, addr.state, addr.county, addr.city, addr.town];
+      const a = [addr.country, addr.region, addr.state, addr.county, addr.city, addr.town, addr.suburb, addr.road, addr.house_number, addr.building];
       a.forEach(addr => {
         if (addr) {
           geotree.push(addr);
@@ -140,7 +168,7 @@ class Bot {
       const geo = this.createTree("geo", geotree);
       console.log("geotree", geotree);
       const username = msg.from.username;
-      this.db.get("users").get(username).get("nowtag").put(geo);
+      this.db.get("users").get(username).get("nowgeo").put(geo);
       this.connect(username, "chat", geo);
       //this.startTag = tr;
       const text = "присоединился @" + username;
@@ -198,10 +226,12 @@ class Bot {
     });
 
     this.bot.onText(/^\/me$/gmi, async (msg, match) => {
-      console.log("/me call");
+      console.log("/me call", msg.from.username);
       this.db.get("users").get(msg.from.username).once(val => {
-        console.log("/me call", val);
-        this.bot.sendMessage(msg.chat.id, val);//TODO количество онлайн
+        console.log("/me call val", val);
+        this.db.get(val.nowtag).once(t =>{
+          this.bot.sendMessage(msg.chat.id, "now "+ t.path + t.name);//val.nowtag);//TODO количество онлайн
+        });
       });
     });
 
@@ -328,10 +358,40 @@ class Bot {
 
     });
 
-    this.bot.on('callback_query', function onCallbackQuery(callbackQuery) {
+    this.bot.on('callback_query', (callbackQuery) => {
       // increment counter when everytime the button is pressed
       //counter = counter + 1
-      console.log("callback_query", callbackQuery);
+      const data = callbackQuery.message;
+      const command = callbackQuery.data
+      console.log("callback_query", command, data.chat.username);
+      console.log("data", data.chat.id, data.message_id);
+      if (command == "up"){
+        const nowtag = this.db.get("users").get(data.chat.username).get("nowtag");
+        nowtag.once(t => {
+          console.log("nowtag", t.path, t.name, t.parent);
+          //const tt = this.db.get(t);
+          //console.log("tt", tt);
+          const up = t.parent;
+          //console.log("uptag", up);
+          //up.once(v =>{
+          //  console.log("u", v);
+          //})
+          nowtag.put(up);
+        })
+        //nowtag.put(nowtag.back());
+      }
+//      this.bot.editMessageText(data.chat.id, data.message_id, callbackQuery.data);//, 
+      try{//TODO это не здесь, а в колбэке nowtag?
+        return;
+      const ret = this.bot.editMessageText(callbackQuery.data, 
+      {
+        chat_id: data.chat.id,
+        message_id: data.message_id
+      });
+      console.log("ret=", ret)
+    }catch (e){
+      console.log("error",e);
+    }
     });
 
   }
@@ -394,7 +454,30 @@ class Bot {
     console.log(extractedAddr, extractedTags);
     return { tags: Object.keys(extractedTags), addr: Object.keys(extractedAddr) };
   }
+  keyboard(id = "tags") {
+    {
+      return {
+        reply_markup: {
+          inline_keyboard: [
+            [{
+              text: `⬆️`,
+              callback_data: 'up'
+            },
+            {
+              text: `➕`,
+              callback_data: 'add'
+            },
+            {
+              text: `👁️`,
+              callback_data: 'subscribe'
+            },
+            ]
+          ]
+        }
+      }
+    }
+  }
 }
 
-//module.exports = Bot;
-export default Bot;
+    //module.exports = Bot;
+    export default Bot;
