@@ -26,12 +26,13 @@ class Bot {
   }
   createTree(tree, tags) {
     var tr = this.db.get(tree);
-    var path = "#";
+    var path = "";
     console.log("createTree", tree, tags);
     tags.forEach(tag => {
       //console.log();
-      tr = tr.get("tags").get(tag).put({ path: path, name: tag, parent: tr });
-      path = path + tag + " #";
+      const description = "описание тега " + tag;//TODO сделать описание оно идет после знака ---?
+      tr = tr.get("tags").get(tag).put({ path: path, name: tag, parent: tr, description });
+      path = path + tag + "\n";
     })
     return tr;
   }
@@ -43,6 +44,7 @@ class Bot {
     this.db.get("users").once(users => {
       Object.keys(users).forEach(user => {
         console.log("connectUser", user);
+        if (user == '_') { return };
         this.db.get("users").get(user).once(u => {
           console.log("user tag ", u.nowtag);
           if (u.chat) {
@@ -51,17 +53,21 @@ class Bot {
           if (u.debug) {
             this.connect(user, "debug")
           }
+          //});
+          this.db.get("users").get(user).get("nowtag").on(async t => {
+            console.log("on nowtag", t, u);
+            console.log(user, u.id, u.message_id, "nowtag on", t);
+            //TODO что-то тут нужно будет делать
+            const text = this.tagText(t);
+            const keyboard = await this.keyboard("tags", t.tags);
+            const ret = this.bot.editMessageText(text,
+              {
+                chat_id: u.id,
+                message_id: u.message_id,
+                reply_markup: keyboard.reply_markup
+              });
+          })
         });
-        this.db.get("users").get(user).get("nowtag").on(t => {
-          console.log(user, u.id, u.message_id, "nowtag on", t);
-          //TODO что-то тут нужно будет делать
-          const ret = this.bot.editMessageText("tttttt", 
-            {
-              chat_id: u.id,
-              message_id: u.message_id
-            });
-      
-        })
       })
       //console.log(users);
     })
@@ -73,18 +79,24 @@ class Bot {
       if (!t) { return }
       this.db.get(t).once(tval => {
         console.log("connect tag", t, tval)
-        this.bot.sendMessage(u.id, "Вы подключились к "+channel+" в сообществе " + tval?.path + tval.name);
+        this.bot.sendMessage(u.id, "Вы подключились к " + channel + " в сообществе " + tval?.path + tval?.name);
         this.db.get(t).get(channel).on(val => {
           console.log("--->>>>>>send message to ", user, val, channel);
-          if (!val.text) {return}
+          var text = val.text ?? val;
+          //if (!val.text) { text  }
           if (u.debug || val.username !== user) {
-            this.bot.sendMessage(u.id, tval?.path + tval.name + " " + val.text);
+            //TODO переделать на очередь с проверкой от задваивания
+            this.bot.sendMessage(u.id, tval?.path + tval?.name + "\n" + text);
           }
         })
       });
     })
   }
-  tagText(value){
+  tagText(value) {
+    if (value && value.name){
+      return value.path + value.name;
+    }
+    return value;
     return "вы находитесь в сообществе " + value.path + value.name + "\n" + (value.description ?? "описание сообщества/можно добавить своё");
   }
   start() {
@@ -114,15 +126,21 @@ class Bot {
       //const text = this.db.get("")
       const username = msg.from.username;
       const user = this.db.get("users").get(username);
-      user.get("nowtag").once((value, key) => {
-        console.log("key->value", key, value);
+      //const user1 = await this.db.get("users").get(username).then();
+      //console.log("uuuuu", user, user1);
+      //user.get("nowtag").once(async (value, key) => {
+      const value = await user.get("nowtag").then();
+      if (value) {
+        console.log("key->value", value);
         const text = this.tagText(value);
+        const keyboard = await this.keyboard("tags", value.tags);
         console.log("send tags list", username, text);
-        this.bot.sendMessage(msg.chat.id, text, this.keyboard()).then(msg => {
+        this.bot.sendMessage(msg.chat.id, text, keyboard).then(msg => {
           console.log("sendMessage", msg.chat.username, msg.message_id);
           user.get("message_id").put(msg.message_id);
         });
-      });
+      }
+      //});
     });
     this.bot.onText(/\/geos$/gmi, async (msg, match) => {
       console.log("<--geos11111", msg.from.username);
@@ -132,9 +150,9 @@ class Bot {
       user.get("nowgeo").once((value, key) => {
         console.log("key->value", key, value);
         var text = "";
-        if (value){
-          text = "вы находитесь в гео-сообществе " + value.path + value.name + "\n"+ value.description ?? "описание сообщества";
-        } else{
+        if (value) {
+          text = "вы находитесь в гео-сообществе " + value.path + value.name + "\n" + value.description ?? "описание сообщества";
+        } else {
           text = "вы находитесь в гео-сообществе Земля";
         }
         console.log("send geo-tree", username, text);
@@ -159,7 +177,7 @@ class Bot {
       const addr = units.address;
       console.log(units.address);
       var geotree = [];
-      const a = [addr.country, addr.region, addr.state, addr.county, addr.city, addr.town, addr.suburb, addr.road, addr.house_number, addr.building];
+      const a = ["🌍", addr.country, addr.region, addr.state, addr.county, addr.city, addr.town, addr.suburb, addr.road, addr.house_number, addr.building];
       a.forEach(addr => {
         if (addr) {
           geotree.push(addr);
@@ -229,8 +247,8 @@ class Bot {
       console.log("/me call", msg.from.username);
       this.db.get("users").get(msg.from.username).once(val => {
         console.log("/me call val", val);
-        this.db.get(val.nowtag).once(t =>{
-          this.bot.sendMessage(msg.chat.id, "now "+ t.path + t.name);//val.nowtag);//TODO количество онлайн
+        this.db.get(val.nowtag).once(t => {
+          this.bot.sendMessage(msg.chat.id, "now " + t.path + t.name);//val.nowtag);//TODO количество онлайн
         });
       });
     });
@@ -277,7 +295,7 @@ class Bot {
       });
     });
 
-    this.bot.onText(/^(.*)$/m, (msg, match) => {
+    this.bot.onText(/^(.*)$/m, async (msg, match) => {
       //TODO в будущем тут 3 варианта - друзья(13), друзья друзей(234), друзья друзей друзей(3423)
       //важность и охват регулируются количеством восклицательных знаков в начале !!!
       var text = match.input;
@@ -314,7 +332,12 @@ class Bot {
           })
         }
       });
-      parse.tags.forEach((tag) => {
+      var nowtag = u.get("nowtag");
+      parse.tags.forEach((tag) => {//TODO здесь переделать
+        nowtag = nowtag.get("tags").get(tag);
+        console.log("nowtag==", nowtag);
+        u.get("nowtag").put(nowtag);
+        return;
         u.get("tags").get(tag).set(m);
         const subs = this.db.get("tags").get(tag).get("subscribers");
         subs.get(username).put({});
@@ -358,44 +381,69 @@ class Bot {
 
     });
 
-    this.bot.on('callback_query', (callbackQuery) => {
+    this.bot.on('callback_query', async (callbackQuery) => {
       // increment counter when everytime the button is pressed
       //counter = counter + 1
       const data = callbackQuery.message;
       const command = callbackQuery.data
       console.log("callback_query", command, data.chat.username);
       console.log("data", data.chat.id, data.message_id);
-      if (command == "up"){
-        const nowtag = this.db.get("users").get(data.chat.username).get("nowtag");
-        nowtag.once(t => {
-          console.log("nowtag", t.path, t.name, t.parent);
-          //const tt = this.db.get(t);
-          //console.log("tt", tt);
-          const up = t.parent;
-          //console.log("uptag", up);
-          //up.once(v =>{
-          //  console.log("u", v);
-          //})
-          nowtag.put(up);
-        })
+      const c = command.match(/^tag:(.*)$/);
+      console.log("match", c);
+      const nowtag = this.db.get("users").get(data.chat.username).get("nowtag");
+      const t = await nowtag.then()
+      if (c) {//заходим в тег 
+        console.log(">>t", t.name,);//, nowtag);
+        const ntag = nowtag.get("tags").get(c[1]);
+        const nn = await ntag.then();
+        console.log("nowtag put", nn);
+        nowtag.put(ntag);
+      }
+      if (command == "up") {
+        //        const nowtag = this.db.get("users").get(data.chat.username).get("nowtag");
+        //        const t = await nowtag.then()
+        console.log("nowtag--", nowtag, t, t.path, t.name, t.parent);
+        //const tt = this.db.get(t);
+        //console.log("tt", tt);
+        const up = this.db.get(t.parent);
+        if (false) {//это теперь делаем в колбеке nowtag
+          const val = await up.then()
+          const text = this.tagText(val);
+          console.log("edit message", text);
+          this.bot.editMessageText(text,
+            {
+              chat_id: data.chat.id,
+              message_id: data.message_id
+            });
+        }
+        //console.log("uptag", up);
+        //up.once(v =>{
+        //  console.log("u", v);
+        //})
+        nowtag.put(up);
+
         //nowtag.put(nowtag.back());
       }
-//      this.bot.editMessageText(data.chat.id, data.message_id, callbackQuery.data);//, 
-      try{//TODO это не здесь, а в колбэке nowtag?
+      //      this.bot.editMessageText(data.chat.id, data.message_id, callbackQuery.data);//, 
+      try {//TODO это не здесь, а в колбэке nowtag?
         return;
-      const ret = this.bot.editMessageText(callbackQuery.data, 
-      {
-        chat_id: data.chat.id,
-        message_id: data.message_id
-      });
-      console.log("ret=", ret)
-    }catch (e){
-      console.log("error",e);
-    }
+        const ret = this.bot.editMessageText(callbackQuery.data,
+          {
+            chat_id: data.chat.id,
+            message_id: data.message_id
+          });
+        console.log("ret=", ret)
+      } catch (e) {
+        console.log("error", e);
+      }
     });
 
   }
 
+
+  addTag(root, tag) {
+    console.log("addTag", root, tag);
+  }
   send(value, text, username, wave = 0) {
     console.log("send", wave, value, text);
     Object.keys(value).forEach((val) => {
@@ -454,8 +502,20 @@ class Bot {
     console.log(extractedAddr, extractedTags);
     return { tags: Object.keys(extractedTags), addr: Object.keys(extractedAddr) };
   }
-  keyboard(id = "tags") {
-    {
+  async keyboard(id = "tags", tags) {
+    console.log("keyboard", tags);
+    var tagsKeyboard = [];
+    if (tags) {
+      const t = await this.db.get(tags).then();
+      console.log("t==", t);
+      if (t) {
+        Object.keys(t).forEach(tt => {
+          if (tt == '_') { return }
+          tagsKeyboard.push([{ text: tt, callback_data: "tag:" + tt }]);
+        })
+      }
+    }
+    if (id == "tags") {
       return {
         reply_markup: {
           inline_keyboard: [
@@ -471,7 +531,23 @@ class Bot {
               text: `👁️`,
               callback_data: 'subscribe'
             },
-            ]
+            ],
+            ...tagsKeyboard
+          ]
+        }
+      }
+    }
+    if (id == "root") {
+      return {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: `➕`,
+                callback_data: 'add'
+              }
+            ],
+            ...tagsKeyboard
           ]
         }
       }
@@ -479,5 +555,5 @@ class Bot {
   }
 }
 
-    //module.exports = Bot;
-    export default Bot;
+//module.exports = Bot;
+export default Bot;
