@@ -42,9 +42,10 @@ class Bot {
   }
   connectUsers() {
     this.db.get("users").once(users => {
+      if (!users){return};
       Object.keys(users).forEach(user => {
-        console.log("connectUser", user);
         if (user == '_') { return };
+        console.log("connectUser", user);
         this.db.get("users").get(user).once(u => {
           console.log("user tag ", u.nowtag);
           if (u.chat) {
@@ -55,11 +56,12 @@ class Bot {
           }
           //});
           this.db.get("users").get(user).get("nowtag").on(async t => {
-            console.log("on nowtag", t, u);
-            console.log(user, u.id, u.message_id, "nowtag on", t);
+            console.log("----------------on nowtag", t.name, u.username);
+            
             //TODO что-то тут нужно будет делать
             const text = this.tagText(t);
             const keyboard = await this.keyboard("tags", t.tags);
+            console.log("editMessage", u.id, u.message_id, text, keyboard);
             const ret = this.bot.editMessageText(text,
               {
                 chat_id: u.id,
@@ -131,7 +133,7 @@ class Bot {
       //user.get("nowtag").once(async (value, key) => {
       const value = await user.get("nowtag").then();
       if (value) {
-        console.log("key->value", value);
+        console.log("nowtag", value.name);
         const text = this.tagText(value);
         const keyboard = await this.keyboard("tags", value.tags);
         console.log("send tags list", username, text);
@@ -333,10 +335,14 @@ class Bot {
         }
       });
       var nowtag = u.get("nowtag");
-      parse.tags.forEach((tag) => {//TODO здесь переделать
-        nowtag = nowtag.get("tags").get(tag);
-        console.log("nowtag==", nowtag);
-        u.get("nowtag").put(nowtag);
+      parse.tags.forEach(async tag => {//TODO здесь переделать
+        const ntag = await nowtag.then();
+        nowtag = nowtag.get("tags").get(tag).put({name:tag, parent:nowtag, path: ntag.path + ntag.name + "\n"});
+        const antag = await nowtag.then();
+        console.log("nowtag==", antag);
+        u.get("nowtag").put(antag);
+        const nn = await u.get("nowtag").then();
+        console.log("nn",nn);
         return;
         u.get("tags").get(tag).set(m);
         const subs = this.db.get("tags").get(tag).get("subscribers");
@@ -396,13 +402,13 @@ class Bot {
         console.log(">>t", t.name,);//, nowtag);
         const ntag = nowtag.get("tags").get(c[1]);
         const nn = await ntag.then();
-        console.log("nowtag put", nn);
+        console.log("nowtag put", nn.name);
         nowtag.put(ntag);
       }
       if (command == "up") {
         //        const nowtag = this.db.get("users").get(data.chat.username).get("nowtag");
         //        const t = await nowtag.then()
-        console.log("nowtag--", nowtag, t, t.path, t.name, t.parent);
+        console.log("up nowtag--", t.name, t.path, t.parent);
         //const tt = this.db.get(t);
         //console.log("tt", tt);
         const up = this.db.get(t.parent);
@@ -507,7 +513,7 @@ class Bot {
     var tagsKeyboard = [];
     if (tags) {
       const t = await this.db.get(tags).then();
-      console.log("t==", t);
+      //console.log("t==", t);
       if (t) {
         Object.keys(t).forEach(tt => {
           if (tt == '_') { return }
