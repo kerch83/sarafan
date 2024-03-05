@@ -26,6 +26,7 @@ class Bot {
   }
   createTree(tree, tags) {
     var tr = this.db.get(tree);
+    tr.put({name: "/", path: ''});
     var path = "";
     console.log("createTree", tree, tags);
     tags.forEach(tag => {
@@ -59,6 +60,8 @@ class Bot {
             console.log("----------------on nowtag", t.name, u.username);
             
             //TODO что-то тут нужно будет делать
+            //в итоге этот колбек подглючивает( решил сделать прямо в обработчике
+            return;
             const text = this.tagText(t);
             const keyboard = await this.keyboard("tags", t.tags);
             console.log("editMessage", u.id, u.message_id, text, keyboard);
@@ -94,11 +97,34 @@ class Bot {
       });
     })
   }
-  tagText(value) {
-    if (value && value.name){
-      return value.path + value.name;
+  async editTagMessage(user){
+    const u = await this.db.get("users").get(user).then();
+    console.log("editMessage u", u);
+    const t = await this.db.get("users").get(user).get("nowtag").then();
+    console.log("editMessage t", t);
+    const text = this.tagText(t);
+    const keyboard = await this.keyboard("tags", t?.tags);
+    console.log("editTagMessage", u.id, u.message_id, text, keyboard);
+    try{
+    const ret = await this.bot.editMessageText(text,
+      {
+        chat_id: u.id,
+        message_id: u.message_id,
+        reply_markup: keyboard.reply_markup
+      });
+    console.log("editMessage ret", ret);
+    }catch(e){
+      console.log("editMessage catch", e);
     }
-    return value;
+
+  }
+  tagText(value) {
+    var ret = value;
+    if (value && value.name){
+      ret = value.path + value.name;
+    }
+    if (!ret || ret == ''){ ret = " " }
+    return ret;
     return "вы находитесь в сообществе " + value.path + value.name + "\n" + (value.description ?? "описание сообщества/можно добавить своё");
   }
   start() {
@@ -124,17 +150,26 @@ class Bot {
       this.bot.sendMessage(msg.chat.id, this.i18n.__("start"));
     });
     this.bot.onText(/\/tags$/gmi, async (msg, match) => {
-      console.log("<--/tags11111", msg.from.username);
+      console.log("<--/tags?", msg.from.username);
       //const text = this.db.get("")
       const username = msg.from.username;
+      console.log(username);
       const user = this.db.get("users").get(username);
+      console.log("user",user);
       //const user1 = await this.db.get("users").get(username).then();
       //console.log("uuuuu", user, user1);
       //user.get("nowtag").once(async (value, key) => {
-      const value = await user.get("nowtag").then();
+      var value = await user.get("nowtag").then();
+      console.log("value", value);
+      if (!value){
+        value = await this.db.get("blocktree").then();
+        user.get("nowtag").put(value);
+      }
+
       if (value) {
         console.log("nowtag", value.name);
-        const text = this.tagText(value);
+        var text = this.tagText(value);
+        if (!value.name) {text="/"};
         const keyboard = await this.keyboard("tags", value.tags);
         console.log("send tags list", username, text);
         this.bot.sendMessage(msg.chat.id, text, keyboard).then(msg => {
@@ -185,7 +220,7 @@ class Bot {
           geotree.push(addr);
         };
       })
-      const geo = this.createTree("geo", geotree);
+      const geo = this.createTree("blocktree", geotree);
       console.log("geotree", geotree);
       const username = msg.from.username;
       this.db.get("users").get(username).get("nowgeo").put(geo);
@@ -301,9 +336,8 @@ class Bot {
       //TODO в будущем тут 3 варианта - друзья(13), друзья друзей(234), друзья друзей друзей(3423)
       //важность и охват регулируются количеством восклицательных знаков в начале !!!
       var text = match.input;
-      console.log("-->", msg.chat.username, msg.chat.id, text);
       if (text.startsWith("/")) { return };//команды пропускаем
-
+      console.log("-->", msg.chat.username, msg.chat.id, text);
       const username = msg.from.username;
       var pretext = "";
       if (text[0] == "?") {
@@ -398,40 +432,37 @@ class Bot {
       console.log("match", c);
       const nowtag = this.db.get("users").get(data.chat.username).get("nowtag");
       const t = await nowtag.then()
-      if (c) {//заходим в тег 
-        console.log(">>t", t.name,);//, nowtag);
+      if (!t){return};
+      if (c && t) {//заходим в тег 
+        console.log(">>t", t?.name);//, nowtag);
         const ntag = nowtag.get("tags").get(c[1]);
         const nn = await ntag.then();
+        if (nn){
         console.log("nowtag put", nn.name);
-        nowtag.put(ntag);
+        this.db.get("users").get(data.chat.username).get("nowtag").put(nn);
+        };
       }
-      if (command == "up") {
+      if (command == "up" && t) {
         //        const nowtag = this.db.get("users").get(data.chat.username).get("nowtag");
         //        const t = await nowtag.then()
         console.log("up nowtag--", t.name, t.path, t.parent);
         //const tt = this.db.get(t);
         //console.log("tt", tt);
+        if (t.parent){
         const up = this.db.get(t.parent);
-        if (false) {//это теперь делаем в колбеке nowtag
-          const val = await up.then()
-          const text = this.tagText(val);
-          console.log("edit message", text);
-          this.bot.editMessageText(text,
-            {
-              chat_id: data.chat.id,
-              message_id: data.message_id
-            });
-        }
-        //console.log("uptag", up);
-        //up.once(v =>{
-        //  console.log("u", v);
-        //})
         nowtag.put(up);
-
-        //nowtag.put(nowtag.back());
+        }else{
+          this.bot.sendMessage(data.chat.id,"вы уже в корне дерева, выше некуда(");  
+        }
+      }
+      if (command == "add" && t){
+        this.bot.sendMessage(data.chat.id,"добавить в "+ t.name);
+        return;
       }
       //      this.bot.editMessageText(data.chat.id, data.message_id, callbackQuery.data);//, 
       try {//TODO это не здесь, а в колбэке nowtag?
+        console.log("before editTagMessage");
+        this.editTagMessage(data.chat.username);
         return;
         const ret = this.bot.editMessageText(callbackQuery.data,
           {
