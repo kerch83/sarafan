@@ -87,29 +87,42 @@ class Bot {
       //console.log(users);
     })
   }
-  connect(user, channel = "chat", tag = null) {
-    this.db.get("users").get(user).once(u => {
-      const t = tag ?? u.nowtag;
-      console.log("connect", user, t, channel);
-      if (!t) { return }
-      this.db.get(t).once(tval => {
-        console.log("connect tag", t, tval)
-        //this.bot.sendMessage(u.id, "Вы подключились к " + channel + " в сообществе " + tval?.path + tval?.name);
-        this.bot.sendMessage(u.id, tval?.path + tval?.name + "\nподключился @" + u.username);
-        this.db.get(t).get(channel).on(val => {
-          console.log("--->>>>>>send message to ", user, val, channel);
-          var text = val.text ?? val;
-          //if (!val.text) { text  }
-          if (true || u.debug || val.username !== user) {
-            //TODO переделать на очередь с проверкой от задваивания
-            this.bot.sendMessage(u.id, tval?.path + tval?.name + "\n" + text);
-          }
-          if (val.username !== user) {
-            //TODO удаление сообщения?
-            //this.bot.
-          }
-        })
-      });
+  async disconnect(user, channel = "chat") {//TODO пока даже не очень понятно что тут должно быть
+    const gunUser = this.db.get("users").get(user);
+    //gunUser.get("connected").put(false);
+    const t = await gunUser.get("nowtag").then();
+    this.db.get(t).get(channel).get("subscribers").get(user).put(false);
+    console.log("disconnect", user, await gunUser.get("nowtag").get("name").then());
+  }   
+  async connect(user, channel = "chat", tag = null) {//TODO приватные каналы - хеши? открытые ключи?
+    const gunUser = this.db.get("users").get(user);
+    const u = await gunUser.then();//u => {
+    const t = tag ?? u.nowtag;
+    console.log("connect", user, t, channel, u);
+    if (u.connected) {
+      console.log("connected");
+      return;
+    };
+    if (!t) { return }
+    gunUser.get("connected").put(true);
+    const tval = await this.db.get(t).then();
+    console.log("connect tag", t, tval)
+    //this.bot.sendMessage(u.id, "Вы подключились к " + channel + " в сообществе " + tval?.path + tval?.name);
+    //this.bot.sendMessage(u.id, tval?.path + tval?.name + "\nподключился @" + u.username);
+    this.db.get(t).get(channel).get("subscribers").get(user).put(true);
+    return;//TODO переделать отправку в чат
+    this.db.get(t).get(channel).on(val => {
+      console.log("--->>>>>>send message to ", user, val, channel);
+      var text = val.text ?? val;
+      //if (!val.text) { text  }
+      if (true || u.debug || val.username !== user) {
+        //TODO переделать на очередь с проверкой от задваивания
+        this.bot.sendMessage(u.id, tval?.path + tval?.name + "\n" + text);
+      }
+      if (val.username !== user) {
+        //TODO удаление сообщения?
+        //this.bot.
+      }
     })
   }
   async editTagMessage(user) {
@@ -149,8 +162,9 @@ class Bot {
     const u = this.db.get("users").get(username);
     u.get("id").put(id);
     u.get("nowtag").put(this.startTag);
-    u.get("chat").put(true);
+    u.get("chatmode").put(true);
     u.get("username").put(username);
+    u.get("state").put("chat");
     this.connect(username);
   }
   async deleteMessage(user, message_id, time = 0) {
@@ -159,7 +173,7 @@ class Bot {
   }
   async deleteMessageId(chat_id, message_id, time = 5) {
     setTimeout(() => {
-    this.bot.deleteMessage(chat_id, message_id);
+      this.bot.deleteMessage(chat_id, message_id);
     }, time * 1000);
   }
   start() {
@@ -276,15 +290,23 @@ class Bot {
     });
 
     this.bot.onText(/^\/chat_on$/gmi, async (msg, match) => {
-      this.db.get("users").get(msg.from.username).put({ "chat": true }).once((val) => {
+      this.db.get("users").get(msg.from.username).put({ "chatmode": true }).once(async (val) => {
         console.log("chat_on", val);
         this.connect(msg.from.username);
-        this.bot.sendMessage(msg.chat.id, "режим чата включен ( online)");//TODO количество онлайн
+        const tag = await this.db.get(val.nowtag).then();
+        const subs = await this.db.get(val.nowtag).get("chat").get("subscribers").then();
+        console.log("subs", subs);
+        var online = 0;
+        Object.keys(subs).forEach(u => {
+          if (subs[u] == true) online++;
+        })
+        this.bot.sendMessage(msg.chat.id, tag.path+tag.name+" ("+online+" online)\nрежим чата включен");//TODO количество онлайн
       });
     });
 
     this.bot.onText(/^\/chat_off$/gmi, async (msg, match) => {
-      this.db.get("users").get(msg.from.username).put({ "chat": false });
+      this.db.get("users").get(msg.from.username).put({ "chatmode": false });
+      this.disconnect(msg.from.username);
       this.bot.sendMessage(msg.chat.id, "режим чата выключен");//TODO количество онлайн
     });
 
@@ -386,6 +408,9 @@ class Bot {
         var mm = text.match(/^(.+)$/igm);
         console.log(mm);
         this.addTag(username, mm);
+        this.deleteMessageId(msg.chat.id, msg.message_id, 1);
+        u.get("state").put("chat");
+        return;
       }
       //const m = u.get("texts").set(text);//сохранять чат не надо. только посты
       //TODO определять посты и сохранять их. и отсылать тем у кого режим чата выключен тоже. т.е. всем кто подписан на тег
@@ -433,6 +458,7 @@ class Bot {
       //TODO надо посылать только в текущий тег
       console.log("send to chat");//, u.get("nowtag"));
       u.get("nowtag").get("chat").put({ text, username });
+      this.deleteMessageId(msg.chat.id, msg.message_id, 1);
       return;//хм
       //u.get("")
       //u.get("friends")
@@ -460,7 +486,8 @@ class Bot {
       //counter = counter + 1
       const data = callbackQuery.message;
       const command = callbackQuery.data
-      console.log("callback_query", command, data.chat.username);
+      const username = data.chat.username;
+      console.log("callback_query", username, command);
       console.log("data", data.chat.id, data.message_id);
       const c = command.match(/^tag:(.*)$/);
       console.log("match", c);
@@ -473,7 +500,10 @@ class Bot {
         const nn = await ntag.then();
         if (nn) {
           console.log("nowtag put", nn.name);
-          this.db.get("users").get(data.chat.username).get("nowtag").put(nn);
+          //TODO копипаста, переделать нормально
+          this.disconnect(username);
+          nowtag.put(nn);
+          this.connect(username);
         };
       }
       if (command == "up" && t) {
@@ -483,8 +513,10 @@ class Bot {
         //const tt = this.db.get(t);
         //console.log("tt", tt);
         if (t.parent) {
-          const up = this.db.get(t.parent);
-          nowtag.put(up);
+          //const up = this.db.get(t.parent);
+          this.disconnect(username);
+          nowtag.put(t.parent);
+          this.connect(username);
         } else {
           this.bot.sendMessage(data.chat.id, "вы уже в корне дерева, выше некуда(").then(msg => {
             this.deleteMessageId(data.chat.id, msg.message_id);
@@ -492,7 +524,9 @@ class Bot {
         }
       }
       if (command == "add" && t) {
-        this.bot.sendMessage(data.chat.id, this.i18n.__("addtag"));
+        this.bot.sendMessage(data.chat.id, this.i18n.__("addtag")).then(msg => {
+          this.deleteMessageId(data.chat.id, msg.message_id, 10);
+        });
         this.db.get("users").get(data.chat.username).get("state").put("addtag");
         return;
       }
@@ -598,7 +632,7 @@ class Bot {
               callback_data: 'add'
             },
             {
-              text: subscribe ? `🔔` : `🔕`,
+              text: subscribe ? `❤️` : `🔕`,
               callback_data: subscribe ? 'subscribe' : 'unsubscribe'
             },
             {
