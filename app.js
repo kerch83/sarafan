@@ -7,7 +7,8 @@ var db = new DB();
 import i18n from './i18n.config.js';
 console.log("----------------", Date.now().toLocaleString());
 
-var bot = new Bot(process.env.TOKEN, db.gun, i18n, process.env.TAGS);
+var bot = new Bot();
+bot.init(process.env.TOKEN, db.gun, i18n, process.env.TAGS);
 bot.start();
 
 console.log("app started");
