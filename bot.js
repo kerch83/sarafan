@@ -7,9 +7,6 @@ const client = nominatim.createClient({
   referer: 'http://srfn.su',  // The referer link
 });
 class Bot {
-  commands = {
-    "friend": "Добавить друзей(подписаться на их сообщения)"
-  };
   tagLists = {};
   constructor() { }
   async init(token, db, i18n, tags) {
@@ -20,13 +17,7 @@ class Bot {
     this.i18n = i18n;
     this.tags = this.parseString(tags);
     console.log("this.tags", this.tags, tags);
-    this.geo = this.connectGeo();
-    //this.startTag = this.createTree("blocktree");
     this.startTag = await this.createTree("blocktree", this.tags.tags);//TODO передавать хеш дерева, их много...
-    //this.startTag = 
-    //this.startTag = tr;
-    //this.startTag.get("debug").put("bot started ver " + pkg.version.toString());
-    //this.connectUsers();
     const rootList = await this.getTagsList(this.db.get("blocktree"));
     const rootHash = await this.db.get("blocktree").get("hash").then();
     console.log("rootList", rootList, rootHash);
@@ -114,9 +105,10 @@ class Bot {
   async touch(node) {
     //return;
     const parent = await node.get("parent").then();
+    if (!parent) { return }
     const tag = await node.then();
-    console.log("touch", tag.name, tag.hash, parent.name, parent.hash);
-    if (tag.hash == parent.hash){
+    console.log("touch", tag.name, tag.hash, parent?.name, parent?.hash);
+    if (tag.hash == parent.hash) {
       console.log("----------------------------err", tag, parent);
       return;
     }
@@ -129,7 +121,7 @@ class Bot {
     var list = this.tagLists[hash] ?? Array();
     list.unshift(item);
     this.tagLists[hash] = list;
-//    console.log(this.tagLists);
+    //    console.log(this.tagLists);
   }
   async cutTag(hash, tag) {
     const newList = this.tagLists[hash]?.filter(t => t.hash !== tag.hash);
@@ -140,84 +132,6 @@ class Bot {
     const child = await this.addTagBase(parent, arr);
     this.touch(parent);
     this.editTagMessage(user);
-  }
-  connectGeo() {
-    //TODO подключить номинатум и загрузить сразу дерево? или добавлять по мере подключения юзеров?
-    return this.db.get("geotree");
-  }
-  connectUsers() {
-    this.db.get("users").once(users => {
-      if (!users) { return };
-      Object.keys(users).forEach(user => {
-        if (user == '_') { return };
-        console.log("connectUser", user);
-        this.db.get("users").get(user).once(u => {
-          console.log("user tag ", u.nowtag);
-          if (u.chat) {
-            this.connect(user)
-          }
-          if (u.debug) {
-            this.connect(user, "debug")
-          }
-          //});
-          this.db.get("users").get(user).get("nowtag").on(async t => {
-            console.log("----------------on nowtag", t.name, u.username);
-
-            //TODO что-то тут нужно будет делать
-            //в итоге этот колбек подглючивает( решил сделать прямо в обработчике
-            return;
-            const text = this.tagText(t);
-            const keyboard = await this.keyboard("tags", t.tags);
-            console.log("editMessage", u.id, u.message_id, text, keyboard);
-            const ret = this.bot.editMessageText(text,
-              {
-                chat_id: u.id,
-                message_id: u.message_id,
-                reply_markup: keyboard.reply_markup
-              });
-          })
-        });
-      })
-      //console.log(users);
-    })
-  }
-  async disconnect(user, channel = "chat") {//TODO пока даже не очень понятно что тут должно быть
-    const gunUser = this.db.get("users").get(user);
-    //gunUser.get("connected").put(false);
-    const t = await gunUser.get("nowtag").then();
-    this.db.get(t).get(channel).get("subscribers").get(user).put(false);
-    console.log("disconnect", user, await gunUser.get("nowtag").get("name").then());
-  }
-  async connect(user, channel = "chat", tag = null) {//TODO приватные каналы - хеши? открытые ключи?
-    const gunUser = this.db.get("users").get(user);
-    const u = await gunUser.then();//u => {
-    const t = tag ?? u.nowtag;
-    console.log("connect", user, t, channel);
-    if (u.connected) {
-      console.log("connected");
-      return;
-    };
-    if (!t) { return }
-    gunUser.get("connected").put(true);
-    const tval = await this.db.get(t).then();
-    console.log("connect tag", t, tval)
-    //this.bot.sendMessage(u.id, "Вы подключились к " + channel + " в сообществе " + tval?.path + tval?.name);
-    //this.bot.sendMessage(u.id, tval?.path + tval?.name + "\nподключился @" + u.username);
-    this.db.get(t).get(channel).get("subscribers").get(user).put(true);
-    return;//TODO переделать отправку в чат
-    this.db.get(t).get(channel).on(val => {
-      console.log("--->>>>>>send message to ", user, val, channel);
-      var text = val.text ?? val;
-      //if (!val.text) { text  }
-      if (true || u.debug || val.username !== user) {
-        //TODO переделать на очередь с проверкой от задваивания
-        this.bot.sendMessage(u.id, tval?.path + tval?.name + "\n" + text);
-      }
-      if (val.username !== user) {
-        //TODO удаление сообщения?
-        //this.bot.
-      }
-    })
   }
   async editTagMessage(user) {
     const u = await this.db.get("users").get(user).then();
@@ -326,34 +240,9 @@ class Bot {
     //потом эти массивы буду храниться у пользователей локально
     return this.tagLists[hash] ?? [];
   }
-  async getTreeRec(tree, level = 9) {//TODO показываем первые 10, а что с остальными? в какой-то момент надо удалять?
-    //TODO сделать листание
-    //TODO сделать пропуск удаленных
-    //TODO сделать количество подписчиков
-    console.log("getTreeRec start");
-    const child = tree.get("childtree");
-    const atree = await tree.then();
-    console.log("getTreeRec", level, atree?.name, atree?.hash, atree?.childtree);
-    //if (!atree){}
-    if (!atree || !atree.name) {
-      return [];
-    }
-    const name = atree.name;//await tree.get("name").then();
-    const hash = atree.hash;//await tree.get("hash").then();
-    var ret = [{ name, hash }];
-    console.log("treeTag", name, hash);
-    if (child && name && hash && level > 0) {
-      //console.log("child rec call", level);
-      const retRec = await this.getTreeRec(child, level - 1);
-      ret.push(...retRec);
-      //console.log("after recursive ret", ret);
-      //console.log("child rec call", ret);
-    }
-    return ret;
-  }
   start() {
     console.log("bot started");
-    this.bot.onText(/\/start/gmi, (msg, match) => {
+    this.bot.onText(/\/start/gmi, (msg, match) => {//TODO сделать переход в необходимый тег при старте с параметром
       const username = msg.from.username;
       console.log("/start", username);
       this.initUser(username, msg.from.id);
@@ -362,8 +251,6 @@ class Bot {
       this.onTags(username, msg.chat.id);
     });
     this.bot.onText(/\/tags$/gmi, async (msg, match) => {
-      console.log("<--/tags?", msg.from.username);
-      //const text = this.db.get("")
       const username = msg.from.username;
       console.log("/tags", username);
       this.deleteMessageId(msg.chat.id, msg.message_id, 0);
@@ -396,35 +283,6 @@ class Bot {
       this.db.get("users").get(username).get("nowtag").put(geo);
       this.deleteMessageId(msg.chat.id, msg.message_id, 0);
       this.onTags(username, msg.chat.id);
-      //this.connect(username);
-      //this.startTag = tr;
-      //const text = "присоединился @" + username;
-      //geo.get("chat").put({ text, username });
-    });
-
-    this.bot.onText(/^\/subscribe(.*)$/gmi, async (msg, match) => {
-      this.bot.sendMessage(msg.chat.id, "в разработке");
-    });
-
-    this.bot.onText(/^\/chat_on$/gmi, async (msg, match) => {
-      this.db.get("users").get(msg.from.username).put({ "chatmode": true }).once(async (val) => {
-        console.log("chat_on", val);
-        this.connect(msg.from.username);
-        const tag = await this.db.get(val.nowtag).then();
-        const subs = await this.db.get(val.nowtag).get("chat").get("subscribers").then();
-        console.log("subs", subs);
-        var online = 0;
-        Object.keys(subs).forEach(u => {
-          if (subs[u] == true) online++;
-        })
-        this.bot.sendMessage(msg.chat.id, tag.path + tag.name + " (" + online + " online)\nрежим чата включен");//TODO количество онлайн
-      });
-    });
-
-    this.bot.onText(/^\/chat_off$/gmi, async (msg, match) => {
-      this.db.get("users").get(msg.from.username).put({ "chatmode": false });
-      this.disconnect(msg.from.username);
-      this.bot.sendMessage(msg.chat.id, "режим чата выключен");//TODO количество онлайн
     });
 
     this.bot.onText(/^\/debug_on$/gmi, async (msg, match) => {
@@ -482,17 +340,17 @@ class Bot {
         console.log("before initUser", username);
         this.initUser(username, msg.from.id);
       }
-      const u = this.db.get("users").get(username).put({ "id": msg.from.id });
-      const state = await u.get("state").then();
-      console.log("state", state);
-      if (true || state == "addtag") {//TODO пока вообще без чата. чат будет в вебе.
-        var mm = text.match(/^(.+)$/igm);
-        console.log(mm);
-        this.addTag(username, mm);
-        this.deleteMessageId(msg.chat.id, msg.message_id, 1);
-        u.get("state").put("chat");
-        return;
-      }
+      //const u = this.db.get("users").get(username).put({ "id": msg.from.id });
+      //const state = await u.get("state").then();
+      //console.log("state", state);
+      //if (true || state == "addtag") {//TODO пока вообще без чата. чат будет в вебе.
+      var mm = text.match(/^(.+)$/igm);
+      console.log("mm", mm);
+      this.addTag(username, mm);
+      this.deleteMessageId(msg.chat.id, msg.message_id, 1);
+      //u.get("state").put("chat");
+      return;
+      //}
     });
 
     this.bot.on('callback_query', async (callbackQuery) => {
@@ -510,7 +368,7 @@ class Bot {
       console.log("t,c", t, c);
       if (!t) { return };
       if (c && t) {//заходим в тег 
-        const tagsList = await this.db.get("users").get(username).get("nowtag").get("tags").then();
+        const tagsList = await nowtag.get("tags").then();
         console.log(">>nowtag", t?.path, t?.name, t?.hash, tagsList);//, nowtag);
         const ntag = nowtag.get("tags").get(c[1]);
         const nn = await ntag.then();
@@ -549,46 +407,11 @@ class Bot {
         console.log("before editTagMessage");
         this.editTagMessage(data.chat.username);
         return;
-        const ret = this.bot.editMessageText(callbackQuery.data,
-          {
-            chat_id: data.chat.id,
-            message_id: data.message_id
-          });
-        console.log("ret=", ret)
       } catch (e) {
         console.log("error", e);
       }
     });
 
-  }
-
-  send(value, text, username, wave = 0) {
-    console.log("send", wave, value, text);
-    Object.keys(value).forEach((val) => {
-      console.log("get from gun.users", val);
-      const user = this.db.get("users").get(val);
-      user.once((uu) => {
-        console.log("uu", uu);
-        if (!uu || !uu.chat) { return }//если режим чата отключен - пропускаем
-        const id = uu.id;
-        //const friends = uu.friends;
-        if (val == username || !id) { return };
-        //console.log("chat send to", val, id);
-        if (id) {
-          console.log("sendMessage", id, text);
-          this.bot.sendMessage(id, text)
-        }
-      });
-      if (wave < 0) {//TODO переделать через очередь в gun. тут только записывать юзерам что им надо отправить
-        user.get("friends").once((val) => {
-          if (!val) { console.log(val); return; }
-          console.log("chat wave", wave, val);
-          console.log(Object.keys(val));
-          this.send(val, text, username, wave + 1);
-          return;
-        });
-      };
-    })
   }
 
   parseString(str) {
@@ -685,5 +508,4 @@ class Bot {
   }
 }
 
-//module.exports = Bot;
 export default Bot;
