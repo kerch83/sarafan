@@ -45,7 +45,8 @@ class Bot {
     }
     return parent;
   }
-  async addTagBase(parent, arr) {
+  async addTagBase(parent, arr) {//TODO добавлять не только текст.
+    //фото видео. события(добавить дату начала/конца). задачи(то попозжее)?
     try {
       const name = arr.shift();
       console.log("addTagBase start", name);
@@ -54,10 +55,35 @@ class Bot {
       const ntag = await parent.then();
       console.log("parent", ntag.name);
       const path = ntag.path + ntag.name + " #";
-      const childtree = ntag?.childstart ?? null;//parent.get("tree");
+      var childtree = ntag?.childstart ?? null;//parent.get("tree");
+      if (childtree){
+        console.log("childtree ok", childtree);
+        childtree = this.db.get(childtree);
+      }
       const hash = md5(path + name);
-      const data = { name, parent, description, path, childtree, hash };
-      const newTag = parent.get("tags").get(hash).put(data);
+      const data = { name, parent, description, path, childtree, hash, parenttree:parent };
+      const newTag = parent.get("tags").get(hash);
+      const t = await newTag.then();
+      if (!t){
+        console.log("add tag new, save data");
+        newTag.put(data);
+      }else{
+        console.log("tag exist, need update", t.name, t.hash, t.parenttree, t.childtree);
+        this.cutTag(t);
+        newTag.get("childtree").put(childtree);
+        newTag.get("parenttree").put(parent);
+        //TODO меняем описание но только для этого юзера?? совместное редактирование. тут надо сильно подумать))
+        if (description){//TODO пока просто добавляем описание, но надо сделать по другому
+        //описания будут хранится в отдельном теге и между ними можно будет выбирать.
+          newTag.get("description").put(t.description + "\n----------\n" + description);  
+        }
+        //return newTag.then();
+      }
+      if (childtree){//меняем родителя на этот новый пост
+        //console.log("childtree", childtree);
+        //this.db.get(childtree)
+        childtree.get("parenttree").put(newTag);
+      }
       parent.get("childstart").put(newTag);
       //parent 
       //parent.get("tree").get("node");
@@ -67,6 +93,13 @@ class Bot {
       console.log("error", err.message);
       return null;
     }
+  }
+  async cutTag(tag){
+    const parent = tag.parenttree ? this.db.get(tag.parenttree) : null;
+    const child = tag.childtree ? this.db.get(tag.childtree) : null;
+    console.log("cutTag", tag);
+    parent?.get("childtree").put(child);
+    child?.get("parenttree").put(parent);
   }
   async addTag(user, arr) {
     const parent = this.db.get("users").get(user).get("nowtag");
@@ -217,7 +250,7 @@ class Bot {
   async onTags(username, chatId) {
     const user = this.db.get("users").get(username);
     const userData = await this.db.get("users").get(username).then();
-    console.log("onTags", userData.username);
+    console.log("onTags", username);
     if (!userData) {//new
       console.log("before initUser", username);
       this.initUser(username, chatId);
@@ -245,6 +278,7 @@ class Bot {
     var treeTags = [];
     if (value.childstart){
       treeTags = await this.getTreeRec(this.db.get(value.childstart));
+      console.log("treeTags", treeTags);
     }
     const keyboard = await this.keyboard(value.name == "" ? "root" : "tags", treeTags);
     console.log("send tags list", username, text, keyboard);
@@ -256,6 +290,8 @@ class Bot {
   }
   async getTreeRec(tree, level = 9) {//TODO показываем первые 10, а что с остальными? в какой-то момент надо удалять?
     //TODO сделать листание
+    //TODO сделать пропуск удаленных
+    //TODO сделать количество подписчиков
     const atree = await tree.then();
     console.log("getTreeRec", level, atree?.name, atree?.hash, atree?.childtree);
     //if (!atree){}
@@ -268,10 +304,10 @@ class Bot {
     var ret = [{ name, hash }];
     console.log("treeTag", name, hash);
     if (child && name && hash && level > 0) {
-      console.log("child rec call", level);
+      //console.log("child rec call", level);
       const retRec = await this.getTreeRec(child, level - 1);
       ret.push(...retRec);
-      console.log("after recursive ret", ret);
+      //console.log("after recursive ret", ret);
       //console.log("child rec call", ret);
     }
     return ret;
@@ -502,7 +538,7 @@ class Bot {
         console.log(">>nowtag", t?.path, t?.name, t?.hash, t?.tags);//, nowtag);
         const ntag = nowtag.get("tags").get(c[1]);
         const nn = await ntag.then();
-        console.log("ntag", c[1], nn);
+        console.log("ntag", c[1], nn?.name);
         if (nn && nn.name) {
           console.log("nowtag put", nn.name);
           //TODO копипаста, переделать нормально
@@ -636,9 +672,9 @@ class Bot {
           inline_keyboard: [
             [
               {
-                text: `🗑️`,
+                text: `✂️`,
                 callback_data: 'delete'
-              },//✂️📄🔍⚙️⌛🔒🔓🌍
+              },//✂️📄🔍⚙️⌛🔒🔓🌍🗑️
   {
               text: `↩️`,
               callback_data: 'up'
