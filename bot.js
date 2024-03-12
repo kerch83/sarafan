@@ -40,7 +40,7 @@ class Bot {
   async getTagsList(root, level = 7) {
     const tags = await root.get("tags").then();
     console.log("createTagList", level, tags);
-    if (!tags){return []};
+    if (!tags || level < 0) { return [] };
     const list = Array();
     const tagsList = Object.keys(tags);
     for (const tag of tagsList) {
@@ -48,8 +48,8 @@ class Bot {
         const child = this.db.get(tags[tag]);
         const childList = await this.getTagsList(child, level - 1);
         const data = await child.then();
-        console.log("tag--", tag, childList);
-        this.tagLists[tag] = childList;  
+        //console.log("tag--", tag, childList);
+        this.tagLists[tag] = childList;
         list.push({ name: data?.name, hash: data?.hash, length: childList.length });
       }
     }
@@ -80,17 +80,9 @@ class Bot {
       const name = arr.shift();
       console.log("addTagBase start", name);
       const description = arr.join("\n");
-      //const ntag = await parent.then();
       const ntag = await parent.then();
       console.log("parent", ntag.name, ntag.hash);
       const path = ntag.path + ntag.name + " #";
-      //var childtree = ntag?.childstart ?? null;//parent.get("tree");
-      //var childtreeData = null;
-      //if (childtree){
-      //  console.log("childtree ok", childtree);
-      //  childtree = this.db.get(childtree);
-      //  childtreeData = await childtree.then();
-      //}
       const hash = md5(path + name);
       const data = { name, parent, description, path, hash };
       const newTag = parent.get("tags").get(hash);
@@ -100,11 +92,6 @@ class Bot {
         newTag.put(data);
       } else {
         console.log("tag exist, need update", t.name, t.hash);
-        //if it first element already no need change
-        //if (childtreeData.hash == t.hash){
-        //  console.log("one tag!!!!!!!!!!!!return");
-        //  return newTag.then();
-        //}
         this.cutTag(ntag.hash, t);
         //        newTag.get("childtree").put(childtree);
         //        newTag.get("parenttree").put(parent);//TODO тут ошибка?
@@ -115,9 +102,7 @@ class Bot {
         }
         //return newTag.then();
       }
-      var list = this.tagLists[ntag.hash] ?? Array();
-      list.unshift({ name, hash });
-      this.tagLists[ntag.hash] = list;
+      this.updateTag(ntag.hash, { name, hash });
       console.log("tagLists", this.tagLists);
       console.log("addTag", ntag?.path, ntag?.name, name);
       return newTag.then();
@@ -126,6 +111,26 @@ class Bot {
       return null;
     }
   }
+  async touch(node) {
+    //return;
+    const parent = await node.get("parent").then();
+    const tag = await node.then();
+    console.log("touch", tag.name, tag.hash, parent.name, parent.hash);
+    if (tag.hash == parent.hash){
+      console.log("----------------------------err", tag, parent);
+      return;
+    }
+    const item = { name: tag.name, hash: tag.hash };
+    this.cutTag(parent.hash, item);
+    this.updateTag(parent.hash, item);
+    console.log(this.tagLists);
+  }
+  updateTag(hash, item) {
+    var list = this.tagLists[hash] ?? Array();
+    list.unshift(item);
+    this.tagLists[hash] = list;
+//    console.log(this.tagLists);
+  }
   async cutTag(hash, tag) {
     const newList = this.tagLists[hash]?.filter(t => t.hash !== tag.hash);
     this.tagLists[hash] = newList;
@@ -133,6 +138,7 @@ class Bot {
   async addTag(user, arr) {
     const parent = this.db.get("users").get(user).get("nowtag");
     const child = await this.addTagBase(parent, arr);
+    this.touch(parent);
     this.editTagMessage(user);
   }
   connectGeo() {
@@ -301,10 +307,8 @@ class Bot {
     var text = this.tagText(value);
     //if (!value.name) { text = "" };
     var treeTags = [];
-    if (value.childstart) {
-      treeTags = await this.getTagPlain(value.hash);
-      console.log("treeTags", treeTags);
-    }
+    treeTags = await this.getTagPlain(value.hash);
+    console.log("treeTags", treeTags);
     const keyboard = await this.keyboard(value.name == "" ? "root" : "tags", treeTags);
     console.log("send tags list", username, text, keyboard);
     const msg = await this.bot.sendMessage(chatId, text, keyboard);
@@ -498,7 +502,7 @@ class Bot {
       const c = command.match(/^tag:(.*)$/);
       console.log("callback_query", username, command);
       console.log("data", data.chat.id, data.message_id);
-      const nowtag = this.db.get("users").get(data.chat.username).get("nowtag");
+      const nowtag = this.db.get("users").get(username).get("nowtag");
       //
       const t = await nowtag.then()
       //const nowtag = this.db.get(nowtagData._);
@@ -506,7 +510,8 @@ class Bot {
       console.log("t,c", t, c);
       if (!t) { return };
       if (c && t) {//заходим в тег 
-        console.log(">>nowtag", t?.path, t?.name, t?.hash, t?.tags);//, nowtag);
+        const tagsList = await this.db.get("users").get(username).get("nowtag").get("tags").then();
+        console.log(">>nowtag", t?.path, t?.name, t?.hash, tagsList);//, nowtag);
         const ntag = nowtag.get("tags").get(c[1]);
         const nn = await ntag.then();
         console.log("ntag", c[1], nn?.name, nn);
