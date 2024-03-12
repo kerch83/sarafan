@@ -27,10 +27,34 @@ class Bot {
     //this.startTag = tr;
     //this.startTag.get("debug").put("bot started ver " + pkg.version.toString());
     //this.connectUsers();
+    const rootList = await this.getTagsList(this.db.get("blocktree"));
+    const rootHash = await this.db.get("blocktree").get("hash").then();
+    console.log("rootList", rootList, rootHash);
+    this.tagLists[rootHash] = rootList;
+    //TODO может и не надо делать root? в руте видно только то, что создал сам?
     console.log("start bot ver", pkg.version.toString(), this.startTag.hash);
   }
   async createTreeRecursive(tree = []) {
     console.log("createTreeRecursive", tree);
+  }
+  async getTagsList(root, level = 7) {
+    const tags = await root.get("tags").then();
+    console.log("createTagList", level, tags);
+    if (!tags){return []};
+    const list = Array();
+    const tagsList = Object.keys(tags);
+    for (const tag of tagsList) {
+      if (tag !== "_") {
+        const child = this.db.get(tags[tag]);
+        const childList = await this.getTagsList(child, level - 1);
+        const data = await child.then();
+        console.log("tag--", tag, childList);
+        this.tagLists[tag] = childList;  
+        list.push({ name: data?.name, hash: data?.hash, length: childList.length });
+      }
+    }
+    console.log("return list", list);
+    return list;
   }
   async createTree(tree, tags = []) {
     console.log("createTree", tree, tags);
@@ -41,10 +65,10 @@ class Bot {
     var path = "";
     for (const tag of tags) {
       const tr = await this.addTagBase(parent, [tag]);
-      if (tr){
-      console.log("tag added!!", tr.name, tr.hash);
-      parent = this.db.get(tr._);//!! на эту строчку ушел весь день, но оно наконец работает)
-      }else {
+      if (tr) {
+        console.log("tag added!!", tr.name, tr.hash);
+        parent = this.db.get(tr._);//!! на эту строчку ушел весь день, но оно наконец работает)
+      } else {
         console.log("tag not added");
       }
     }
@@ -71,10 +95,10 @@ class Bot {
       const data = { name, parent, description, path, hash };
       const newTag = parent.get("tags").get(hash);
       const t = await newTag.then();
-      if (!t){
+      if (!t) {
         console.log("add tag new, save data");
         newTag.put(data);
-      }else{
+      } else {
         console.log("tag exist, need update", t.name, t.hash);
         //if it first element already no need change
         //if (childtreeData.hash == t.hash){
@@ -82,26 +106,19 @@ class Bot {
         //  return newTag.then();
         //}
         this.cutTag(ntag.hash, t);
-//        newTag.get("childtree").put(childtree);
-//        newTag.get("parenttree").put(parent);//TODO тут ошибка?
+        //        newTag.get("childtree").put(childtree);
+        //        newTag.get("parenttree").put(parent);//TODO тут ошибка?
         //TODO меняем описание но только для этого юзера?? совместное редактирование. тут надо сильно подумать))
-        if (description){//TODO пока просто добавляем описание, но надо сделать по другому
-        //описания будут хранится в отдельном теге и между ними можно будет выбирать.
-          newTag.get("description").put(t.description + "\n----------\n" + description);  
+        if (description) {//TODO пока просто добавляем описание, но надо сделать по другому
+          //описания будут хранится в отдельном теге и между ними можно будет выбирать.
+          newTag.get("description").put(t.description + "\n----------\n" + description);
         }
         //return newTag.then();
       }
-      const list = this.tagLists[ntag.hash] ?? Array();
-      list.unshift({name, hash});
+      var list = this.tagLists[ntag.hash] ?? Array();
+      list.unshift({ name, hash });
       this.tagLists[ntag.hash] = list;
       console.log("tagLists", this.tagLists);
-//      if (childtree){//меняем родителя на этот новый пост
-//        childtree.get("parenttree").put(newTag);
-//        console.log("change parenttree", await childtree.then());
-//      }
-//      parent.get("childstart").put(newTag);
-      //parent 
-      //parent.get("tree").get("node");
       console.log("addTag", ntag?.path, ntag?.name, name);
       return newTag.then();
     } catch (err) {
@@ -109,21 +126,9 @@ class Bot {
       return null;
     }
   }
-  async cutTag(hash, tag){
-    const newList = this.tagLists[hash]?.filter( t => t.hash !== tag.hash);
-    //if (index && index !== -1){
-    //  this.tagLists[hash].splice(index, 1);
+  async cutTag(hash, tag) {
+    const newList = this.tagLists[hash]?.filter(t => t.hash !== tag.hash);
     this.tagLists[hash] = newList;
-    //};
-    return;
-    const parent = tag.parenttree ? this.db.get(tag.parenttree) : {};
-    const child = tag.childtree ? this.db.get(tag.childtree) : {};
-    //console.log("cutTag", tag);
-    parent?.get("childtree").put(child);
-    if (tag.childtree){
-      child.get("parenttree").put(parent);
-    };
-    //console.log("cutTag", tag, await parent?.then(), await child?.then());
   }
   async addTag(user, arr) {
     const parent = this.db.get("users").get(user).get("nowtag");
@@ -213,7 +218,7 @@ class Bot {
     //console.log("editMessage", user);
     const t = await this.db.get("users").get(user).get("nowtag").then();
     console.log("editMessage", t?.name, t?.hash, t?.childstart, t?.childtree);
-    if (!t){
+    if (!t) {
       console.log("!!!!!!!!! t undefined");
       return;
     }
@@ -296,7 +301,7 @@ class Bot {
     var text = this.tagText(value);
     //if (!value.name) { text = "" };
     var treeTags = [];
-    if (value.childstart){
+    if (value.childstart) {
       treeTags = await this.getTagPlain(value.hash);
       console.log("treeTags", treeTags);
     }
@@ -308,7 +313,7 @@ class Bot {
     this.deleteMessageId(msg.chat.id, old_message_id, 0);
     user.get("message_id").put(msg.message_id);
   }
-  async getTagPlain(hash, skip = 0){//решил сделать по простому)
+  async getTagPlain(hash, skip = 0) {//решил сделать по простому)
     //const treeData = await tree.then();
     console.log("getTagPlain", hash);
     //if (!treeData || !treeData.name){
@@ -326,7 +331,7 @@ class Bot {
     const atree = await tree.then();
     console.log("getTreeRec", level, atree?.name, atree?.hash, atree?.childtree);
     //if (!atree){}
-    if (!atree || !atree.name){
+    if (!atree || !atree.name) {
       return [];
     }
     const name = atree.name;//await tree.get("name").then();
@@ -517,7 +522,7 @@ class Bot {
       if (command == "up" && t) {
         console.log("up nowtag--", t.name, t.path, t.parent);
         if (t.parent) {
-          nowtag.put(t.parent);
+          nowtag.put(this.db.get(t.parent));
         } else {
           this.bot.sendMessage(data.chat.id, "вы уже в корне дерева, выше некуда(").then(msg => {
             this.deleteMessageId(data.chat.id, msg.message_id);
@@ -525,12 +530,12 @@ class Bot {
         }
         //return;
       }
-      if (command == "subscribe"){//TODO сделать)
+      if (command == "subscribe") {//TODO сделать)
         this.bot.sendMessage(data.chat.id, "в разработке").then(msg => {
           this.deleteMessageId(data.chat.id, msg.message_id);
         });
       }
-      if (command == "delete"){//TODO сделать)
+      if (command == "delete") {//TODO сделать)
         this.bot.sendMessage(data.chat.id, "в разработке").then(msg => {
           this.deleteMessageId(data.chat.id, msg.message_id);
         });
@@ -620,7 +625,7 @@ class Bot {
       //if (t) {
       tags.forEach(tag => {//TODO сортировка по времени поле updated?
         //if (tt == '_') { return }
-        if (tag?.name){
+        if (tag?.name) {
           tagsKeyboard.push([{ text: tag.name, callback_data: "tag:" + tag?.hash }]);
         }
       })
@@ -634,22 +639,22 @@ class Bot {
                 text: `✂️`,
                 callback_data: 'delete'
               },//✂️📄🔍⚙️⌛🔒🔓🌍🗑️
-  {
-              text: `↩️`,
-              callback_data: 'up'
-            },
-            //            {
-            //              text: `🗨️`,//💾
-            //              callback_data: 'add'
-            //            },
-            //            {
-            //              text: `🔊`,//🔊🔈🔉
-            //              callback_data: 'chat_on'
-            //            },
-            {
-              text: subscribe ? `❤️` : `💔`,
-              callback_data: subscribe ? 'subscribe' : 'unsubscribe'
-            },
+              {
+                text: `↩️`,
+                callback_data: 'up'
+              },
+              //            {
+              //              text: `🗨️`,//💾
+              //              callback_data: 'add'
+              //            },
+              //            {
+              //              text: `🔊`,//🔊🔈🔉
+              //              callback_data: 'chat_on'
+              //            },
+              {
+                text: subscribe ? `❤️` : `💔`,
+                callback_data: subscribe ? 'subscribe' : 'unsubscribe'
+              },
             ],
             ...tagsKeyboard
           ]
