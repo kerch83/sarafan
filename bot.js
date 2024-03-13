@@ -18,6 +18,7 @@ class Bot {
     this.tags = this.parseString(tags);
     console.log("this.tags", this.tags, tags);
     this.startTag = await this.createTree("blocktree", this.tags.tags);//TODO передавать хеш дерева, их много...
+    this.tagLists = [];
     const rootList = await this.getTagsList(this.db.get("blocktree"));
     const rootHash = await this.db.get("blocktree").get("hash").then();
     console.log("rootList", rootList, rootHash);
@@ -28,7 +29,7 @@ class Bot {
   async createTreeRecursive(tree = []) {
     console.log("createTreeRecursive", tree);
   }
-  async getTagsList(root, level = 7) {
+  async getTagsList(root, level = 7) {//TODO проверку от зацикливания? хотя по идее всё переписать надо(
     const tags = await root.get("tags").then();
     console.log("createTagList", level, tags);
     if (!tags || level < 0) { return [] };
@@ -37,6 +38,12 @@ class Bot {
     for (const tag of tagsList) {
       if (tag !== "_") {
         const child = this.db.get(tags[tag]);
+        if (this.tagLists[tag]){
+          console.log("tag already set, return", level ,tag, this.tagLists[tag]);
+          return [];
+        } else {
+          console.log("call getTagList", level, tag);
+        }
         const childList = await this.getTagsList(child, level - 1);
         const data = await child.then();
         //console.log("tag--", tag, childList);
@@ -57,7 +64,7 @@ class Bot {
     for (const tag of tags) {
       const tr = await this.addTagBase(parent, [tag]);
       if (tr) {
-        console.log("tag added!!", tr.name, tr.hash);
+        console.log("tag added!!", tr.name, tr.hash, tr._);
         parent = this.db.get(tr._);//!! на эту строчку ушел весь день, но оно наконец работает)
       } else {
         console.log("tag not added");
@@ -68,15 +75,15 @@ class Bot {
   async addTagBase(parent, arr) {//TODO добавлять не только текст.
     //фото видео. события(добавить дату начала/конца). задачи(то попозжее)?
     try {
-      const name = arr.shift();
+      const name = arr.shift().toLowerCase();
       console.log("addTagBase start", name);
       const description = arr.join("\n");
       const ntag = await parent.then();
-      console.log("parent", ntag.name, ntag.hash);
+      console.log("parent", ntag.name, ntag.hash, ntag.parent);
       const path = ntag.path + ntag.name + " #";
       const hash = md5(path + name);
       const data = { name, parent, description, path, hash };
-      const newTag = parent.get("tags").get(hash);
+      const newTag = this.db.get(hash);
       const t = await newTag.then();
       if (!t) {
         console.log("add tag new, save data");
@@ -93,6 +100,7 @@ class Bot {
         }
         //return newTag.then();
       }
+      parent.get("tags").get(hash).put(newTag);
       this.updateTag(ntag.hash, { name, hash });
       console.log("tagLists", this.tagLists);
       console.log("addTag", ntag?.path, ntag?.name, name);
@@ -103,11 +111,10 @@ class Bot {
     }
   }
   async touch(node) {
-    //return;
-    const parent = await node.get("parent").then();
-    if (!parent) { return }
     const tag = await node.then();
-    console.log("touch", tag.name, tag.hash, parent?.name, parent?.hash);
+    const parent = await this.db.get(tag.parent).then();
+    if (!parent) { return }
+    console.log("touch", tag.name, tag.hash, tag.parent, parent?.name, parent?.hash);
     if (tag.hash == parent.hash) {
       console.log("----------------------------err", tag, parent);
       return;
@@ -372,7 +379,7 @@ class Bot {
         console.log(">>nowtag", t?.path, t?.name, t?.hash, tagsList);//, nowtag);
         const ntag = nowtag.get("tags").get(c[1]);
         const nn = await ntag.then();
-        console.log("ntag", c[1], nn?.name, nn);
+        console.log("ntag", c[1], nn?.name, nn?.parent);
         if (nn && nn.name) {
           console.log("nowtag put", nn.name);
           //TODO копипаста, переделать нормально
