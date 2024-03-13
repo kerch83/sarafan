@@ -18,7 +18,7 @@ class Bot {
     this.tags = this.parseString(tags);
     console.log("this.tags", this.tags, tags);
     this.startTag = await this.createTree("blocktree", this.tags.tags);//TODO передавать хеш дерева, их много...
-    this.tagLists = [];
+    this.tagLists = {};
     const rootList = await this.getTagsList(this.db.get("blocktree"));
     const rootHash = await this.db.get("blocktree").get("hash").then();
     console.log("rootList", rootList, rootHash);
@@ -82,12 +82,14 @@ class Bot {
       console.log("parent", ntag.name, ntag.hash, ntag.parent);
       const path = ntag.path + ntag.name + " #";
       const hash = md5(path + name);
-      const data = { name, parent, description, path, hash };
+      const data = { name, description, path, hash };
       const newTag = this.db.get(hash);
       const t = await newTag.then();
       if (!t) {
         console.log("add tag new, save data");
         newTag.put(data);
+        newTag.get("parent").put(parent);//Только так можно сохранять рефы
+        //TODO везде проверить
       } else {
         console.log("tag exist, need update", t.name, t.hash);
         this.cutTag(ntag.hash, t);
@@ -100,10 +102,15 @@ class Bot {
         }
         //return newTag.then();
       }
-      parent.get("tags").get(hash).put(newTag);
+      console.log("parent tags before add hash", hash, await parent.get("tags").then(), await parent.then());
+      const ttag = parent.get("tags").get(hash);
+      console.log("-----", await parent.then(), await parent.get("tags").get(hash));
+      ttag.put(newTag);//TODO здесь ошибка? а-а-ааа
+      console.log("-----", await parent.then());
+      //что-то я уже не хочу этот ган((
       this.updateTag(ntag.hash, { name, hash });
-      console.log("tagLists", this.tagLists);
       console.log("addTag", ntag?.path, ntag?.name, name);
+      console.log("parent tags after", await parent.get("tags").then(), await parent.then());
       return newTag.then();
     } catch (err) {
       console.log("error", err.message);
@@ -128,7 +135,7 @@ class Bot {
     var list = this.tagLists[hash] ?? Array();
     list.unshift(item);
     this.tagLists[hash] = list;
-    //    console.log(this.tagLists);
+    console.log("set first tag", item?.name, this.tagLists[hash]);
   }
   async cutTag(hash, tag) {
     const newList = this.tagLists[hash]?.filter(t => t.hash !== tag.hash);
