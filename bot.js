@@ -151,7 +151,7 @@ class Bot {
     }
     const text = this.tagText(t);
     const treeTags = await this.getTagPlain(t.hash);
-    const keyboard = await this.keyboard(t.name == "" ? "root" : "tags", treeTags);
+    const keyboard = await this.keyboard(t.name == "" ? "root" : "tags", treeTags, u);
     console.log("editTagMessage", u.id, u.message_id, text, keyboard);
     if (!u.message_id) {//нечего исправлять, отправляем
       this.onTags(user, u.id);
@@ -190,6 +190,7 @@ class Bot {
     u.get("chatmode").put(true);
     u.get("username").put(username);
     u.get("state").put("chat");
+    u.get("publicMode").put(true);
     const userData = await u.then();
     console.log("initUser created", userData.username);
     //this.connect(username);
@@ -230,7 +231,7 @@ class Bot {
     var treeTags = [];
     treeTags = await this.getTagPlain(value.hash);
     console.log("treeTags", treeTags);
-    const keyboard = await this.keyboard(value.name == "" ? "root" : "tags", treeTags);
+    const keyboard = await this.keyboard(value.name == "" ? "root" : "tags", treeTags, userData);
     console.log("send tags list", username, text, keyboard);
     const msg = await this.bot.sendMessage(chatId, text, keyboard);
     console.log("sendMessage", msg.chat.username, msg.message_id);
@@ -410,6 +411,18 @@ class Bot {
           this.deleteMessageId(data.chat.id, msg.message_id);
         });
       }
+      if (command == "private") {//TODO сделать)
+        this.db.get("users").get(username).get("publicMode").put(false);
+        this.bot.sendMessage(data.chat.id, "В разработке").then(msg => {
+          this.deleteMessageId(data.chat.id, msg.message_id);
+        });
+      }
+      if (command == "public") {//TODO сделать)
+        this.db.get("users").get(username).get("publicMode").put(true);
+        this.bot.sendMessage(data.chat.id, "В разработке").then(msg => {
+          this.deleteMessageId(data.chat.id, msg.message_id);
+        });
+      }
       try {//TODO это не здесь, а в колбэке nowtag?
         console.log("before editTagMessage");
         this.editTagMessage(data.chat.username);
@@ -450,9 +463,11 @@ class Bot {
     //console.log(extractedAddr, extractedTags);
     return { tags: Object.keys(extractedTags), addr: Object.keys(extractedAddr) };
   }
-  async keyboard(id = "tags", tags = [], subscribe = true) {
+  async keyboard(id = "tags", tags = [], userData = {}) {
     //tags [{name,hash}]
-    console.log("keyboard", id, tags);
+    console.log("keyboard", id, tags, userData);
+    const subscribe = userData?.subscribe;
+    const publicMode = userData?.publicMode;
     var tagsKeyboard = [];
     if (tags) {
       //const t = await this.db.get(tags).then();
@@ -501,12 +516,12 @@ class Bot {
         reply_markup: {
           inline_keyboard: [
             //TODO сделать закрытую часть. приватную.
-            //            [
-            //              {
-            //                text: subscribe ? `🔒` : `🔓`,
-            //                callback_data: subscribe ? 'private' : 'public'
-            //              }
-            //            ],
+                        [
+                          {
+                            text: publicMode ? `🔒` : `👁️`,
+                            callback_data: publicMode  ? 'private' : 'public'
+                          }
+                        ],
             ...tagsKeyboard
           ]
         }
