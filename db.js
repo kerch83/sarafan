@@ -10,6 +10,9 @@ addRxPlugin(RxDBDevModePlugin);
 import {
 	getRxStorageMemory
 } from 'rxdb/plugins/storage-memory';
+import {
+	getRxStorageFoundationDB
+} from 'rxdb/plugins/storage-foundationdb';
 
 const tagSchema = {
 	version: 0,
@@ -73,11 +76,20 @@ class DB {//класс с расчетом на использование и в
 		this.gun = new this.GUN();
 		this.data = {};
 	}
-	async createRxDatabase() {
-		const db = await createRxDatabase({
-			name: 'db',
-			storage: getRxStorageMemory()
-		});
+	async createRxDatabase(storage) {
+		var db;
+		if (storage == 'memory') {
+			db = await createRxDatabase({
+				name: 'db',
+				storage: getRxStorageMemory()
+			});
+		}
+		if (storage == 'foundationdb'){
+			db = await createRxDatabase({
+				name: 'db',
+				storage: getRxStorageFoundationDB()
+			});
+		}
 		await db.addCollections({
 			tags: {
 				schema: tagSchema
@@ -113,9 +125,9 @@ class DB {//класс с расчетом на использование и в
 		}
 		return parent;
 	}
-	async touch(tag, level = 5){
-		await tag.incrementalPatch({time: Date.now()});
-		if (tag.parent_id && level> 0){
+	async touch(tag, level = 5) {
+		await tag.incrementalPatch({ time: Date.now() });
+		if (tag.parent_id && level > 0) {
 			const parent = await this.getTag(tag.parent_id);
 			await this.touch(parent, level - 1);
 		}
@@ -138,7 +150,7 @@ class DB {//класс с расчетом на использование и в
 		//this.tags[hash] = data;
 		//this.printTags();
 		const tag = await this.getTag(hash);
-		if (tag){
+		if (tag) {
 			return tag;
 		}
 		const doc = await this.rx.tags.insert({
@@ -168,21 +180,21 @@ class DB {//класс с расчетом на использование и в
 		//const treeData = await tree.then();
 		console.log("getTagChilds", hash);
 		const query = this.rx.tags.find({
-      selector: {
-        parent_id: hash
-      },
+			selector: {
+				parent_id: hash
+			},
 			sort: [
-        {time: 'desc'}
-      ]
-    });
+				{ time: 'desc' }
+			]
+		});
 		//if (!treeData || !treeData.name){
 		//  return [];
 		//}
 		//потом эти массивы буду храниться у пользователей локально
 		const tags = await query.exec();
 		var ret = [];
-		for (const tag of tags){
-			ret.push({name:tag.name, hash: tag.id});
+		for (const tag of tags) {
+			ret.push({ name: tag.name, hash: tag.id });
 		}
 		//console.log("getTagChilds ret", ret);
 		return ret;
@@ -196,17 +208,17 @@ class DB {//класс с расчетом на использование и в
 		this.trees[tree] = {};
 		this.useTree(tree);
 	}
-	async getUser(username){
+	async getUser(username) {
 		const query = this.rx.users.findOne({
-      selector: {
-        name: username
-      }
-    });
+			selector: {
+				name: username
+			}
+		});
 		const user = await query.exec();
 		if (user) return user;
 		return null;
 	}
-	async createUser(username, chatId){
+	async createUser(username, chatId) {
 		const user = await this.getUser(username);
 		console.log("createUser start", user?.toJSON());
 		if (user) return user;

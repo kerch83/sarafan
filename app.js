@@ -4,7 +4,7 @@ import DB from './db.js';
 import Bot from './bot.js'
 //console.log(DB);
 var db = new DB();
-await db.createRxDatabase();
+await db.createRxDatabase(process.env.RX_STORAGE);
 import i18n from './i18n.config.js';
 console.log("----------------", Date.now().toLocaleString());
 
