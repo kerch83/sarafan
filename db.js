@@ -13,6 +13,9 @@ import {
 import {
 	getRxStorageFoundationDB
 } from 'rxdb/plugins/storage-foundationdb';
+import {
+	getRxStorageMongoDB
+} from 'rxdb/plugins/storage-mongodb';
 
 const tagSchema = {
 	version: 0,
@@ -76,7 +79,8 @@ class DB {//класс с расчетом на использование и в
 		this.gun = new this.GUN();
 		this.data = {};
 	}
-	async createRxDatabase(storage) {
+	async createRxDatabase(storage, connection) {
+		console.log("createRxDB", storage, connection);
 		var db;
 		if (storage == 'memory') {
 			db = await createRxDatabase({
@@ -88,6 +92,14 @@ class DB {//класс с расчетом на использование и в
 			db = await createRxDatabase({
 				name: 'db',
 				storage: getRxStorageFoundationDB()
+			});
+		}
+		if (storage == 'mongodb'){
+			db = await createRxDatabase({
+				name: 'db',
+				storage: getRxStorageMongoDB({
+					connection
+				})
 			});
 		}
 		await db.addCollections({
