@@ -563,7 +563,13 @@ class Bot {
             //а из велкома его уже может какой-либо участник сообщества добавить/повысить до равноправного члена сообщества?
             [
               {
+                text: `⌛`,
+                callback_data: publicMode ? 'private' : 'public'
+              },              {
                 text: publicMode ? `🔒` : `👁️`,
+                callback_data: publicMode ? 'private' : 'public'
+              },              {
+                text: true ? `⚙️` : `👁️`,
                 callback_data: publicMode ? 'private' : 'public'
               }
             ],
