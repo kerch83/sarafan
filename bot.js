@@ -13,18 +13,23 @@ class Bot {
     //    const TelegramBot = require('node-telegram-bot-api');
     this.nominatim = client;
     this.bot = new TelegramBot(token, { polling: true });
-    this.db = db;
+    this.db = db.gun;
+    this.DB = db;
     this.i18n = i18n;
     this.tags = this.parseString(tags);
     console.log("this.tags", this.tags, tags);
-    this.startTag = await this.createTree("blocktree", this.tags.tags);//TODO передавать хеш дерева, их много...
-    this.tagLists = {};
-    const rootList = await this.getTagsList(this.db.get("blocktree"));
-    const rootHash = await this.db.get("blocktree").get("hash").then();
-    console.log("rootList", rootList, rootHash);
-    this.tagLists[rootHash] = rootList;
+    //this.startTag = await this.createTree("blocktree", this.tags.tags);//TODO передавать хеш дерева, их много...
+    //this.DB.createTree("blocktree");
+    this.startTag = await this.DB.addTags(this.tags.tags);
+    //console.log("startTag", this.startTag);
+    //this.DB.printTags();
+    //this.tagLists = {};
+    //const rootList = await this.getTagsList(this.db.get("blocktree"));
+    //const rootHash = await this.db.get("blocktree").get("hash").then();
+    //console.log("rootList", rootList, rootHash);
+    //this.tagLists[rootHash] = rootList;
     //TODO может и не надо делать root? в руте видно только то, что создал сам?
-    console.log("start bot ver", pkg.version.toString(), this.startTag.hash);
+    console.log("start bot ver", pkg.version.toString(), this.startTag);
   }
   async createTreeRecursive(tree = []) {
     console.log("createTreeRecursive", tree);
@@ -38,8 +43,8 @@ class Bot {
     for (const tag of tagsList) {
       if (tag !== "_") {
         const child = this.db.get(tags[tag]);
-        if (this.tagLists[tag]){
-          console.log("tag already set, return", level ,tag, this.tagLists[tag]);
+        if (this.tagLists[tag]) {
+          console.log("tag already set, return", level, tag, this.tagLists[tag]);
           return [];
         } else {
           console.log("call getTagList", level, tag);
@@ -74,6 +79,9 @@ class Bot {
   }
   async addTagBase(parent, arr) {//TODO добавлять не только текст.
     //фото видео. события(добавить дату начала/конца). задачи(то попозжее)?
+    this.DB.addTag(parent, arr);
+    this.DB.printTags();
+    return;
     try {
       const name = arr.shift().toLowerCase();
       console.log("addTagBase start", name);
@@ -141,27 +149,29 @@ class Bot {
     const newList = this.tagLists[hash]?.filter(t => t.hash !== tag.hash);
     this.tagLists[hash] = newList;
   }
-  async addTag(user, arr) {
-    const parent = this.db.get("users").get(user).get("nowtag");
-    const child = await this.addTagBase(parent, arr);
-    this.touch(parent);
-    this.editTagMessage(user);
+  async addTag(username, arr) {
+    const user = await this.DB.getUser(username);
+    console.log("user", user.toJSON());
+    //const child = await this.addTagBase(parent, arr);
+    await this.DB.addTag(user.nowtag, arr);
+    //this.touch(parent);
+    this.editTagMessage(username);
   }
-  async editTagMessage(user) {
-    const u = await this.db.get("users").get(user).then();
-    //console.log("editMessage", user);
-    const t = await this.db.get("users").get(user).get("nowtag").then();
-    console.log("editMessage", t?.name, t?.hash, t?.childstart, t?.childtree);
+  async editTagMessage(username) {
+    const u = await this.DB.getUser(username);//this.db.get("users").get(user).then();
+    console.log("editMessage", username, u?.name, u.toJSON());
+    const t = await this.DB.getTag(u.nowtag);//await this.db.get("users").get(user).get("nowtag").then();
+    console.log("editMessage tag", t?.toJSON());
     if (!t) {
-      console.log("!!!!!!!!! t undefined");
-      return;
+      //console.log("!!!!!!!!! t undefined");
+      //return;
     }
     const text = this.tagText(t);
-    const treeTags = await this.getTagPlain(t.hash);
-    const keyboard = await this.keyboard(t.name == "" ? "root" : "tags", treeTags, u);
+    const treeTags = await this.DB.getTagChilds(t?.id);
+    const keyboard = await this.keyboard(t ? "tags" : "root", treeTags, u.state);
     console.log("editTagMessage", u.id, u.message_id, text, keyboard);
     if (!u.message_id) {//нечего исправлять, отправляем
-      this.onTags(user, u.id);
+      this.onTags(username, u.id);
       return;
     }
     try {
@@ -185,12 +195,18 @@ class Bot {
         ret += "\n" + value.description;
       };
     }
-    if (!ret || ret == '') { ret = "#" }
+    if (!ret || ret == '') { ret = "👁️" }
     return ret;
     return "вы находитесь в сообществе " + value.path + value.name + "\n" + (value.description ?? "описание сообщества/можно добавить своё");
   }
   async initUser(username, id) {
-    console.log("initUser", username, id);
+    console.log("initUser", username, id, this.startTag);
+    const user = await this.DB.createUser(username, id);
+    console.log("initUser after create", user?.name);
+    await user.incrementalPatch({
+      nowtag: this.startTag
+    });
+    return user;
     const u = this.db.get("users").get(username);
     u.get("id").put(id);
     u.get("nowtag").put(this.startTag);
@@ -212,15 +228,17 @@ class Bot {
     }, time * 1000);
   }
   async onTags(username, chatId) {
-    const user = this.db.get("users").get(username);
-    const userData = await this.db.get("users").get(username).then();
-    console.log("onTags", username);
-    if (!userData) {//new
+    var user = await this.DB.getUser(username);
+    //this.db.get("users").get(username);
+    //const userData = await this.db.get("users").get(username).then();
+    console.log("onTags", username, user?.id);
+    if (!user) {//new
       console.log("before initUser", username);
-      this.initUser(username, chatId);
+      user = await this.initUser(username, chatId);
+      console.log("user created", user.name, user.id);
     }
-    var value = await user.get("nowtag").then();
-    if (!value) {
+    var nowtag = await this.DB.getTag(user.nowtag);//await user.get("nowtag").then();
+    if (false && !value) {
       //value = await this.db.get("blocktree").then();
       if (this.startTag) {
         //value = await this.startTag.then();//await this.db.get("blocktree").then();
@@ -232,19 +250,20 @@ class Bot {
       }
       console.log("user new nowtag", value);
     }
-    console.log("nowtag", value.name, value.hash);
-    var text = this.tagText(value);
+    console.log("nowtag", nowtag?.toJSON());
+    var text = this.tagText(nowtag, user.state);
     //if (!value.name) { text = "" };
     var treeTags = [];
-    treeTags = await this.getTagPlain(value.hash);
-    console.log("treeTags", treeTags);
-    const keyboard = await this.keyboard(value.name == "" ? "root" : "tags", treeTags, userData);
+    treeTags = await this.DB.getTagChilds(nowtag?.id);
+    //console.log("treeTags", treeTags);
+    const keyboard = await this.keyboard(nowtag ? "tags" : "root", treeTags, user.state);
     console.log("send tags list", username, text, keyboard);
     const msg = await this.bot.sendMessage(chatId, text, keyboard);
     console.log("sendMessage", msg.chat.username, msg.message_id);
-    const old_message_id = await user.get("message_id").then();
-    this.deleteMessageId(msg.chat.id, old_message_id, 0);
-    user.get("message_id").put(msg.message_id);
+    await user.incrementalPatch({ message_id: msg.message_id });
+    //const old_message_id = await user.get("message_id").then();
+    //this.deleteMessageId(msg.chat.id, old_message_id, 0);
+    //user.get("message_id").put(msg.message_id);
   }
   async getTagPlain(hash, skip = 0) {//решил сделать по простому)
     //const treeData = await tree.then();
@@ -257,10 +276,11 @@ class Bot {
   }
   start() {
     console.log("bot started");
-    this.bot.onText(/\/start/gmi, (msg, match) => {//TODO сделать переход в необходимый тег при старте с параметром
+    this.bot.onText(/\/start/gmi, async (msg, match) => {//TODO сделать переход в необходимый тег при старте с параметром
       const username = msg.from.username;
       console.log("/start", username);
-      this.initUser(username, msg.from.id);
+      const user = await this.DB.getUser(username);
+      if (!user) await this.initUser(username, msg.from.id);
       this.deleteMessageId(msg.chat.id, msg.message_id, 0);
       //this.bot.sendMessage(msg.chat.id, this.i18n.__("start"));
       this.onTags(username, msg.chat.id);
@@ -291,11 +311,17 @@ class Bot {
           geotree.push(addr);
         };
       })
-      const geo = await this.createTree("blocktree", geotree);//TODO подумать
+      const geo = await this.DB.addTags(geotree);
+      //const geo = await this.createTree("blocktree", geotree);//TODO подумать
       //подумал. будут отдельные деревья для каждого тега..?
-      console.log("location", geotree);
+      console.log("location", geo, geotree);
       const username = msg.from.username;
-      this.db.get("users").get(username).get("nowtag").put(geo);
+      var user = await this.DB.getUser(username);
+      if (!user) {
+        user = await this.initUser(username, msg.chat.id);
+      }
+      await user.incrementalPatch({nowtag: geo});
+      //this.db.get("users").get(username).get("nowtag").put(geo);
       this.deleteMessageId(msg.chat.id, msg.message_id, 0);
       this.onTags(username, msg.chat.id);
     });
@@ -349,11 +375,11 @@ class Bot {
       var parse = this.parseString(text);
       console.log("parse", parse);
       text = pretext + text;
-      const user = await this.db.get("users").get(username).then();
+      const user = await this.DB.getUser(username);//this.db.get("users").get(username).then();
       //console.log(user);
       if (!user) {//new
         console.log("before initUser", username);
-        this.initUser(username, msg.from.id);
+        await this.initUser(username, msg.from.id);
       }
       //const u = this.db.get("users").get(username).put({ "id": msg.from.id });
       //const state = await u.get("state").then();
@@ -375,32 +401,41 @@ class Bot {
       const c = command.match(/^tag:(.*)$/);
       console.log("callback_query", username, command);
       console.log("data", data.chat.id, data.message_id);
-      const nowtag = this.db.get("users").get(username).get("nowtag");
-      //
-      const t = await nowtag.then()
+      //const nowtag = this.this.db.get("users").get(username).get("nowtag");
+      var user = await this.DB.getUser(username);
+      if (!user) {
+        user = await this.initUser(username, data.chat.id);
+      }
+      const tag = await this.DB.getTag(user.nowtag);
       //const nowtag = this.db.get(nowtagData._);
       //const t = ;
-      console.log("t,c", t, c);
-      if (!t) { return };
-      if (c && t) {//заходим в тег 
-        const tagsList = await nowtag.get("tags").then();
-        console.log(">>nowtag", t?.path, t?.name, t?.hash, tagsList);//, nowtag);
-        const ntag = nowtag.get("tags").get(c[1]);
-        const nn = await ntag.then();
-        console.log("ntag", c[1], nn?.name, nn?.parent);
-        if (nn && nn.name) {
-          console.log("nowtag put", nn.name);
+      console.log("tag", tag?.toJSON());
+      //if (!tag) { return };
+      if (c && c[1]) {//заходим в тег 
+        //const tagsList = await nowtag.get("tags").then();
+        console.log(">>nowtag", tag?.path, tag?.name, tag?.id, c[1])//, tagsList);//, nowtag);
+        const newTag = await this.DB.getTag(c[1]);
+        console.log("<<newTag", newTag?.toJSON())
+        if (newTag){
+          await user.incrementalPatch({nowtag: newTag.id});
+        }
+        //const ntag = nowtag.get("tags").get(c[1]);
+        //const nn = await ntag.then();
+        //console.log("ntag", c[1], nn?.name, nn?.parent);
+        //if (nn && nn.name) {
+          //console.log("nowtag put", nn.name);
           //TODO копипаста, переделать нормально
           //this.disconnect(username);
-          nowtag.put(ntag);
+          //nowtag.put(ntag);
           //return;
           //this.connect(username);
-        };
+        //};
       }
-      if (command == "up" && t) {
-        console.log("up nowtag--", t.name, t.path, t.parent);
-        if (t.parent) {
-          nowtag.put(this.db.get(t.parent));
+      if (command == "up" && tag) {
+        console.log("up nowtag--", tag.name, tag.path, tag.parent_id);
+        if (tag?.name) {
+          await user.incrementalPatch({nowtag: tag.parent_id});
+          //nowtag.put(this.db.get(t.parent));
         } else {
           this.bot.sendMessage(data.chat.id, "вы уже в корне дерева, выше некуда(").then(msg => {
             this.deleteMessageId(data.chat.id, msg.message_id);
@@ -473,8 +508,8 @@ class Bot {
   async keyboard(id = "tags", tags = [], userData = {}) {
     //tags [{name,hash}]
     console.log("keyboard", id, tags, userData);
-    const subscribe = userData?.subscribe;
-    const publicMode = userData?.publicMode;
+    const subscribe = true;//userData?.subscribe;
+    const publicMode = true;//userData?.publicMode;
     var tagsKeyboard = [];
     if (tags) {
       //const t = await this.db.get(tags).then();
@@ -523,12 +558,15 @@ class Bot {
         reply_markup: {
           inline_keyboard: [
             //TODO сделать закрытую часть. приватную.
-                        [
-                          {
-                            text: publicMode ? `🔒` : `👁️`,
-                            callback_data: publicMode  ? 'private' : 'public'
-                          }
-                        ],
+            //доступ по ссылке(тут подумать, как то ограничить?) или можно вручную добавлять
+            //в закрытом теге есть тоже разные уровни. самый простой - по ссылке, человек попадает в велком
+            //а из велкома его уже может какой-либо участник сообщества добавить/повысить до равноправного члена сообщества?
+            [
+              {
+                text: publicMode ? `🔒` : `👁️`,
+                callback_data: publicMode ? 'private' : 'public'
+              }
+            ],
             ...tagsKeyboard
           ]
         }

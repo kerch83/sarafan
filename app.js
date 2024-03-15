@@ -4,11 +4,12 @@ import DB from './db.js';
 import Bot from './bot.js'
 //console.log(DB);
 var db = new DB();
+await db.createRxDatabase();
 import i18n from './i18n.config.js';
 console.log("----------------", Date.now().toLocaleString());
 
 var bot = new Bot();
-bot.init(process.env.TOKEN, db.gun, i18n, process.env.TAGS);
+bot.init(process.env.TOKEN, db, i18n, process.env.TAGS);
 bot.start();
 
 console.log("app started");

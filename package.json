@@ -8,7 +8,9 @@
     "md5": "^2.3.0",
     "node-telegram-bot-api": "^0.64.0",
     "nominatim-client": "^3.2.1",
-    "nominatim-geocoder": "^0.1.4"
+    "nominatim-geocoder": "^0.1.4",
+    "rxdb": "^15.11.1",
+    "rxjs": "^7.8.1"
   },
   "type": "module",
   "version": "0.1.1"
