@@ -17,7 +17,7 @@ import {
 	getRxStorageMongoDB
 } from 'rxdb/plugins/storage-mongodb';
 
-const tagSchema = {
+const tagSchema = {//TODO добавить юзера-создателя и подписчиков?
 	version: 0,
 	primaryKey: 'id',
 	type: 'object',
