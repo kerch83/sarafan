@@ -163,12 +163,12 @@ class DB {//класс с расчетом на использование и в
 	}
 	async addTag(parent, arr) {
 		const name = arr.shift().toLowerCase();
-		console.log("addTag start", name, parent);
+		//console.log("addTag start", name, parent);
 		const description = arr.join("\n");
 		var path = "";
 		if (parent) {
 			const ntag = await this.getTag(parent);
-			console.log("parent", ntag?.name, ntag?.hash, ntag?.parent);
+			//console.log("parent", ntag?.name, ntag?.hash, ntag?.parent);
 			path = ntag?.path + ntag?.name + " #";
 			await this.touch(ntag);
 		} else {
@@ -190,11 +190,11 @@ class DB {//класс с расчетом на использование и в
 			description,
 			time: Date.now()
 		});
-		console.log("rx tag insert", doc.id, doc.name, doc.time);
+		//console.log("rx tag insert", doc.id, doc.name, doc.time);
 		return doc;
 	}
 	async getTag(id) {
-		console.log("in getTag", id);
+		//console.log("in getTag", id);
 		if (!id) return null;
 		return this.rx.tags.findOne({
 			selector: {
@@ -207,7 +207,7 @@ class DB {//класс с расчетом на использование и в
 	}
 	async getTagChilds(hash, skip = 0) {//решил сделать по простому)
 		//const treeData = await tree.then();
-		console.log("getTagChilds", hash);
+		//console.log("getTagChilds", hash);
 		const query = this.rx.tags.find({
 			selector: {
 				parent_id: hash
@@ -239,13 +239,14 @@ class DB {//класс с расчетом на использование и в
 	}
 	async getUser(id) {
 		if (!id) return null;
-		console.log("try get user", id, String(id));
+		//console.log("try get user", id, String(id));
 		const query = this.rx.users.findOne({
 			selector: {
 				id: String(id)
 			}
 		});
 		const user = await query.exec();
+		//console.log("user", user?.toJSON());
 		if (user) return user;
 		return null;
 	}
@@ -267,7 +268,7 @@ class DB {//класс с расчетом на использование и в
 		//или каждому свое показывается?
 		if (!id) return "";
 		const tags = await this.getTagChilds(id);
-		console.log("text tags", tags);
+		//console.log("text tags", tags);
 		var ret = "\n";
 		if (level > 1) return ret;
 		for (const tag of tags) {
