@@ -266,8 +266,8 @@ class Bot {
       const username = msg.from.username;
       console.log("/start", username, msg.from);
       //return;
-      const user = await this.DB.getUser(msg.from.id);
-      if (!user) await this.initUser(msg.from);
+      var user = await this.DB.getUser(msg.from.id);
+      if (!user) user = await this.initUser(msg.from);
       this.actionLog('start', user);
       //console.log("+++", username, "start");
       this.deleteMessageId(msg.chat.id, msg.message_id, 0);
