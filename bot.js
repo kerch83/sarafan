@@ -543,7 +543,7 @@ class Bot {
                 callback_data: 'delete'
               },//✂️📄🔍⚙️⌛🔒🔓🌍🗑️📅
               {
-                text: `↩️`,
+                text: `↩⬆️`,
                 callback_data: 'up'
               },
               //            {
