@@ -395,6 +395,7 @@ class Bot {
       var mm = text.match(/^(.+)$/igm);
       console.log("mm", mm);
       const newTag = await this.addTag(username, mm);
+      console.log("+++", username, "create", newTag.path, "->", newTag.name, newTag?.description);
       this.deleteMessageId(msg.chat.id, msg.message_id, 1);
       //u.get("state").put("chat");
       return;
@@ -423,6 +424,7 @@ class Bot {
         console.log(">>nowtag", tag?.path, tag?.name, tag?.id, c[1])//, tagsList);//, nowtag);
         const newTag = await this.DB.getTag(c[1]);
         console.log("<<newTag", newTag?.toJSON())
+        console.log("+++", username, newTag.path, "->", newTag.name);
         if (newTag){
           await user.incrementalPatch({nowtag: newTag.id});
         }
@@ -441,6 +443,7 @@ class Bot {
       if (command == "up" && tag) {
         console.log("up nowtag--", tag.name, tag.path, tag.parent_id);
         if (tag?.name) {
+          console.log("+++", username, tag.path, tag.name, "up");
           await user.incrementalPatch({nowtag: tag.parent_id});
           //nowtag.put(this.db.get(t.parent));
         } else {
