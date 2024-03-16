@@ -70,13 +70,13 @@ class Bot {
     if (value) {
       ret = "" + value?.path + value?.name;
       if (value.description) {
-        ret += "\n" + value.description;
+        ret += "\n--------------------\n" + value.description;
       };
     }
     if (!ret || ret == '') { ret = "👁️ список открытых сообществ\nможно добавить свое, отправьте его название(опционально с новой строчки можно добавить описание)" }
     if (value){//TODO тут подумать, нужно ли в корне тоже суммарное?
       //думаю нужно, но только тех сообществ, на которые подписан
-      ret = ret + await this.DB.getTextChild(value?.id);
+      ret = ret + "\n----------------------" + await this.DB.getTextChild(value?.id);
     }
     return ret;
     return "вы находитесь в сообществе " + value.path + value.name + "\n" + (value.description ?? "описание сообщества/можно добавить своё");
@@ -101,18 +101,10 @@ class Bot {
     var nowtag = await this.DB.getTag(user.nowtag);//await user.get("nowtag").then();
     console.log("nowtag", nowtag?.toJSON());
     var text = await this.tagText(nowtag, user.state);
-    //if (!value.name) { text = "" };
-    var treeTags = [];
-    treeTags = await this.DB.getTagChilds(nowtag?.id);
-    //console.log("treeTags", treeTags);
+    const treeTags = await this.DB.getTagChilds(nowtag?.id);
     const keyboard = await this.keyboard(nowtag ? "tags" : "root", treeTags, user.state);
-    //console.log("send tags list", username, text, keyboard);
     const msg = await this.bot.sendMessage(u.id, text, keyboard);
-    //console.log("sendMessage", msg.chat.username, msg.message_id);
     await user.incrementalPatch({ message_id: msg.message_id });
-    //const old_message_id = await user.get("message_id").then();
-    //this.deleteMessageId(msg.chat.id, old_message_id, 0);
-    //user.get("message_id").put(msg.message_id);
   }
   actionLog(act, user, info = ''){
     console.log("++++action", act, user?.name ?? user?.username ?? '', user?.first_name ?? '', user?.last_name ?? '', info);
