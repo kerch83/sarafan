@@ -16,6 +16,8 @@ import {
 import {
 	getRxStorageMongoDB
 } from 'rxdb/plugins/storage-mongodb';
+import { RxDBMigrationPlugin } from 'rxdb/plugins/migration-schema';
+addRxPlugin(RxDBMigrationPlugin);
 
 const tagSchema = {//TODO добавить юзера-создателя и подписчиков?
 	version: 0,
@@ -46,7 +48,7 @@ const tagSchema = {//TODO добавить юзера-создателя и по
 }
 
 const userSchema = {
-	version: 0,
+	version: 1,
 	primaryKey: 'id',
 	type: 'object',
 	properties: {
@@ -54,7 +56,16 @@ const userSchema = {
 			type: 'string',
 			maxLength: 100
 		},
-		name: {
+		name: {//внезапно оказалось что его может и не быть))
+			type: 'string'
+		},
+		first_name: {
+			type: 'string'
+		},
+		last_name: {
+			type: 'string'
+		},
+		language_code: {
 			type: 'string'
 		},
 		nowtag: {
@@ -67,7 +78,7 @@ const userSchema = {
 			type: 'integer'
 		}
 	},
-	required: ['id', 'name']
+	required: ['id']
 }
 
 class DB {//класс с расчетом на использование и в браузере/вебаппе
@@ -79,8 +90,8 @@ class DB {//класс с расчетом на использование и в
 		this.gun = new this.GUN();
 		this.data = {};
 	}
-	async createRxDatabase(storage, connection) {
-		console.log("createRxDB", storage, connection);
+	async createRxDatabase(storage, connection, name = 'testdb') {
+		console.log("createRxDB", storage, connection, name);
 		var db;
 		if (storage == 'memory') {
 			db = await createRxDatabase({
@@ -96,7 +107,7 @@ class DB {//класс с расчетом на использование и в
 		}
 		if (storage == 'mongodb') {
 			db = await createRxDatabase({
-				name: 'db',
+				name: name,
 				storage: getRxStorageMongoDB({
 					connection
 				})
@@ -109,7 +120,13 @@ class DB {//класс с расчетом на использование и в
 		});
 		await db.addCollections({
 			users: {
-				schema: userSchema
+				schema: userSchema,
+				migrationStrategies: {
+					// 1 means, this transforms data from version 0 to version 1
+					1: function(oldDoc){
+						return oldDoc;
+					}
+				}				
 			}
 		});
 		this.rx = db;
@@ -220,23 +237,28 @@ class DB {//класс с расчетом на использование и в
 		this.trees[tree] = {};
 		this.useTree(tree);
 	}
-	async getUser(username) {
+	async getUser(id) {
+		if (!id) return null;
+		console.log("try get user", id, String(id));
 		const query = this.rx.users.findOne({
 			selector: {
-				name: username
+				id: String(id)
 			}
 		});
 		const user = await query.exec();
 		if (user) return user;
 		return null;
 	}
-	async createUser(username, chatId) {
-		const user = await this.getUser(username);
-		console.log("createUser start", user?.toJSON());
-		if (user) return user;
+	async createUser(user) {
+		const u = await this.getUser(user?.id);
+		console.log("createUser start", u?.toJSON(), user);
+		if (u) return u;
 		const ret = await this.rx.users.insert({
-			id: String(chatId),
-			name: username
+			id: String(user?.id),
+			name: user?.username,
+			first_name: user?.first_name,
+			last_name: user?.last_name,
+			language_code: user?.language_code
 		});
 		console.log("createUser after", ret.toJSON());
 		return ret;
@@ -247,7 +269,7 @@ class DB {//класс с расчетом на использование и в
 		const tags = await this.getTagChilds(id);
 		console.log("text tags", tags);
 		var ret = "\n";
-		if (level > 3) return ret;
+		if (level > 1) return ret;
 		for (const tag of tags) {
 			ret += ">".repeat(level) + " " + tag.name;//TODO пока так, а потом надо будет что-то придумать
 			if (false && tag.description) { //TODO тут подумать, но вроде пока он тут не нужен.

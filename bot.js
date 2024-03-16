@@ -149,19 +149,20 @@ class Bot {
     const newList = this.tagLists[hash]?.filter(t => t.hash !== tag.hash);
     this.tagLists[hash] = newList;
   }
-  async addTag(username, arr) {
-    const user = await this.DB.getUser(username);
+  async addTag(u, arr) {
+    const user = await this.DB.getUser(u.id);
     console.log("user", user.toJSON());
     //const child = await this.addTagBase(parent, arr);
     const newTag = await this.DB.addTag(user.nowtag, arr);
     await user.incrementalPatch({nowtag: newTag.id});
     //this.touch(parent);
-    await this.editTagMessage(username);
+    await this.editTagMessage(u);
     return newTag;
   }
-  async editTagMessage(username) {
-    const u = await this.DB.getUser(username);//this.db.get("users").get(user).then();
-    console.log("editMessage", username, u?.name, u.toJSON());
+  async editTagMessage(user) {
+    const u = await this.DB.getUser(user?.id);//this.db.get("users").get(user).then();
+    if (!u) return;
+    console.log("editMessage", user.id, u?.name, u?.toJSON());
     const t = await this.DB.getTag(u.nowtag);//await this.db.get("users").get(user).get("nowtag").then();
     console.log("editMessage tag", t?.toJSON());
     if (!t) {
@@ -173,7 +174,7 @@ class Bot {
     const keyboard = await this.keyboard(t ? "tags" : "root", treeTags, u.state);
     console.log("editTagMessage", u.id, u.message_id, text, keyboard);
     if (!u.message_id) {//нечего исправлять, отправляем
-      this.onTags(username, u.id);
+      this.onTags(user);
       return;
     }
     try {
@@ -206,57 +207,32 @@ class Bot {
     return ret;
     return "вы находитесь в сообществе " + value.path + value.name + "\n" + (value.description ?? "описание сообщества/можно добавить своё");
   }
-  async initUser(username, id) {
-    console.log("initUser", username, id, this.startTag);
-    const user = await this.DB.createUser(username, id);
+  async initUser(u) {
+    console.log("initUser", u.username, u.id, this.startTag);
+    const user = await this.DB.createUser(u);
     console.log("initUser after create", user?.name);
     await user.incrementalPatch({
       nowtag: this.startTag
     });
     return user;
-    const u = this.db.get("users").get(username);
-    u.get("id").put(id);
-    u.get("nowtag").put(this.startTag);
-    u.get("chatmode").put(true);
-    u.get("username").put(username);
-    u.get("state").put("chat");
-    u.get("publicMode").put(true);
-    const userData = await u.then();
-    console.log("initUser created", userData.username);
-    //this.connect(username);
-  }
-  async deleteMessage(user, message_id, time = 0) {
-    const chat_id = this.db.get("users").get(user).get("id").then();
-    this.bot.deleteMessage(chat_id, message_id);
   }
   async deleteMessageId(chat_id, message_id, time = 3) {
     setTimeout(() => {
       this.bot.deleteMessage(chat_id, message_id);
     }, time * 1000);
   }
-  async onTags(username, chatId) {
-    var user = await this.DB.getUser(username);
+  async onTags(u) {
+    const username = u.username;
+    var user = await this.DB.getUser(u.id);
     //this.db.get("users").get(username);
     //const userData = await this.db.get("users").get(username).then();
     console.log("onTags", username, user?.id);
     if (!user) {//new
-      console.log("before initUser", username);
-      user = await this.initUser(username, chatId);
+      console.log("before initUser", username, u);
+      user = await this.initUser(u);
       console.log("user created", user.name, user.id);
     }
     var nowtag = await this.DB.getTag(user.nowtag);//await user.get("nowtag").then();
-    if (false && !value) {
-      //value = await this.db.get("blocktree").then();
-      if (this.startTag) {
-        //value = await this.startTag.then();//await this.db.get("blocktree").then();
-        value = this.startTag;
-        user.get("nowtag").put(this.db.get(this.startTag));
-      } else {
-        value = await this.db.get("blocktree").then();
-        user.get("nowtag").put(this.db.get("blocktree"));
-      }
-      console.log("user new nowtag", value);
-    }
     console.log("nowtag", nowtag?.toJSON());
     var text = await this.tagText(nowtag, user.state);
     //if (!value.name) { text = "" };
@@ -265,7 +241,7 @@ class Bot {
     //console.log("treeTags", treeTags);
     const keyboard = await this.keyboard(nowtag ? "tags" : "root", treeTags, user.state);
     console.log("send tags list", username, text, keyboard);
-    const msg = await this.bot.sendMessage(chatId, text, keyboard);
+    const msg = await this.bot.sendMessage(u.id, text, keyboard);
     console.log("sendMessage", msg.chat.username, msg.message_id);
     await user.incrementalPatch({ message_id: msg.message_id });
     //const old_message_id = await user.get("message_id").then();
@@ -281,23 +257,28 @@ class Bot {
     //потом эти массивы буду храниться у пользователей локально
     return this.tagLists[hash] ?? [];
   }
+  actionLog(act, user, info = ''){
+    console.log("++++action", act, user?.id, user?.name ?? user?.username, user?.first_name, user?.last_name, info);
+  }
   start() {
     console.log("bot started");
     this.bot.onText(/\/start/gmi, async (msg, match) => {//TODO сделать переход в необходимый тег при старте с параметром
       const username = msg.from.username;
-      console.log("/start", username);
-      const user = await this.DB.getUser(username);
-      if (!user) await this.initUser(username, msg.from.id);
-      console.log("+++", username, "start");
+      console.log("/start", username, msg.from);
+      //return;
+      const user = await this.DB.getUser(msg.from.id);
+      if (!user) await this.initUser(msg.from);
+      this.actionLog('start', user);
+      //console.log("+++", username, "start");
       this.deleteMessageId(msg.chat.id, msg.message_id, 0);
       //this.bot.sendMessage(msg.chat.id, this.i18n.__("start"));
-      this.onTags(username, msg.chat.id);
+      this.onTags(msg.from);
     });
     this.bot.onText(/\/tags$/gmi, async (msg, match) => {
       const username = msg.from.username;
       console.log("/tags", username);
       this.deleteMessageId(msg.chat.id, msg.message_id, 0);
-      this.onTags(username, msg.chat.id);
+      this.onTags(msg.from);
       return;
     });
     this.bot.on('location', async (msg) => {
@@ -324,14 +305,15 @@ class Bot {
       //подумал. будут отдельные деревья для каждого тега..?
       console.log("location", geo, geotree);
       const username = msg.from.username;
-      var user = await this.DB.getUser(username);
+      var user = await this.DB.getUser(msg.from.id);
       if (!user) {
-        user = await this.initUser(username, msg.chat.id);
+        user = await this.initUser(msg.from);
       }
+      this.actionLog("location", user, geotree);
       await user.incrementalPatch({nowtag: geo});
       //this.db.get("users").get(username).get("nowtag").put(geo);
       this.deleteMessageId(msg.chat.id, msg.message_id, 0);
-      this.onTags(username, msg.chat.id);
+      this.onTags(msg.from);
     });
 
     this.bot.onText(/^\/debug_on$/gmi, async (msg, match) => {
@@ -383,11 +365,11 @@ class Bot {
       var parse = this.parseString(text);
       console.log("parse", parse);
       text = pretext + text;
-      const user = await this.DB.getUser(username);//this.db.get("users").get(username).then();
+      var user = await this.DB.getUser(msg.from.id);//this.db.get("users").get(username).then();
       //console.log(user);
       if (!user) {//new
         console.log("before initUser", username);
-        await this.initUser(username, msg.from.id);
+        user = await this.initUser(msg.from);
       }
       //const u = this.db.get("users").get(username).put({ "id": msg.from.id });
       //const state = await u.get("state").then();
@@ -395,8 +377,9 @@ class Bot {
       //if (true || state == "addtag") {//TODO пока вообще без чата. чат будет в вебе.
       var mm = text.match(/^(.+)$/igm);
       console.log("mm", mm);
-      const newTag = await this.addTag(username, mm);
-      console.log("+++", username, "create", newTag.path, "->", newTag.name, newTag?.description);
+      const newTag = await this.addTag(msg.chat, mm);
+      this.actionLog("create", user, newTag?.toJSON());
+      //console.log("+++", username, "create", newTag.path, "->", newTag.name, newTag?.description);
       this.deleteMessageId(msg.chat.id, msg.message_id, 1);
       //u.get("state").put("chat");
       return;
@@ -411,9 +394,9 @@ class Bot {
       console.log("callback_query", username, command);
       console.log("data", data.chat.id, data.message_id);
       //const nowtag = this.this.db.get("users").get(username).get("nowtag");
-      var user = await this.DB.getUser(username);
+      var user = await this.DB.getUser(data.chat.id);
       if (!user) {
-        user = await this.initUser(username, data.chat.id);
+        user = await this.initUser(data.chat);
       }
       const tag = await this.DB.getTag(user.nowtag);
       //const nowtag = this.db.get(nowtagData._);
@@ -425,7 +408,8 @@ class Bot {
         console.log(">>nowtag", tag?.path, tag?.name, tag?.id, c[1])//, tagsList);//, nowtag);
         const newTag = await this.DB.getTag(c[1]);
         console.log("<<newTag", newTag?.toJSON())
-        console.log("+++", username, newTag.path, "->", newTag.name);
+        this.actionLog("in", user, [newTag.path, newTag.name]);
+        //console.log("+++", username, newTag.path, "->", newTag.name);
         if (newTag){
           await user.incrementalPatch({nowtag: newTag.id});
         }
@@ -444,7 +428,8 @@ class Bot {
       if (command == "up" && tag) {
         console.log("up nowtag--", tag.name, tag.path, tag.parent_id);
         if (tag?.name) {
-          console.log("+++", username, tag.path, tag.name, "up");
+          this.actionLog("up", user, [tag.path, tag.name]);
+          //console.log("+++", username, tag.path, tag.name, "up");
           await user.incrementalPatch({nowtag: tag.parent_id});
           //nowtag.put(this.db.get(t.parent));
         } else {
@@ -478,7 +463,7 @@ class Bot {
       }
       try {//TODO это не здесь, а в колбэке nowtag?
         console.log("before editTagMessage");
-        this.editTagMessage(data.chat.username);
+        this.editTagMessage(data.chat);
         return;
       } catch (e) {
         console.log("error", e);

@@ -4,7 +4,11 @@ import DB from './db.js';
 import Bot from './bot.js'
 //console.log(DB);
 var db = new DB();
-await db.createRxDatabase(process.env.RX_STORAGE, process.env.RX_CONNECTION);
+var dbname = 'db';
+if (process.env?.MODE == "DEV") {
+    dbname = "testdb";
+};
+await db.createRxDatabase(process.env.RX_STORAGE, process.env.RX_CONNECTION, dbname);
 import i18n from './i18n.config.js';
 console.log("----------------", Date.now().toLocaleString());
 
