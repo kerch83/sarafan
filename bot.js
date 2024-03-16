@@ -166,7 +166,7 @@ class Bot {
       //console.log("!!!!!!!!! t undefined");
       //return;
     }
-    const text = this.tagText(t);
+    const text = await this.tagText(t);
     const treeTags = await this.DB.getTagChilds(t?.id);
     const keyboard = await this.keyboard(t ? "tags" : "root", treeTags, u.state);
     console.log("editTagMessage", u.id, u.message_id, text, keyboard);
@@ -187,7 +187,8 @@ class Bot {
     }
 
   }
-  tagText(value) {
+  async tagText(value) {
+    console.log("tagText", value?.toJSON());
     var ret = "";
     if (value) {
       ret = "" + value?.path + value?.name;
@@ -196,6 +197,10 @@ class Bot {
       };
     }
     if (!ret || ret == '') { ret = "👁️" }
+    if (value){//TODO тут подумать, нужно ли в корне тоже суммарное?
+      //думаю нужно, но только тех сообществ, на которые подписан
+      ret = ret + await this.DB.getTextChild(value?.id);
+    }
     return ret;
     return "вы находитесь в сообществе " + value.path + value.name + "\n" + (value.description ?? "описание сообщества/можно добавить своё");
   }
@@ -251,7 +256,7 @@ class Bot {
       console.log("user new nowtag", value);
     }
     console.log("nowtag", nowtag?.toJSON());
-    var text = this.tagText(nowtag, user.state);
+    var text = await this.tagText(nowtag, user.state);
     //if (!value.name) { text = "" };
     var treeTags = [];
     treeTags = await this.DB.getTagChilds(nowtag?.id);
@@ -518,7 +523,7 @@ class Bot {
       tags.forEach(tag => {//TODO сортировка по времени поле updated?
         //if (tt == '_') { return }
         if (tag?.name) {
-          tagsKeyboard.push([{ text: tag.name, callback_data: "tag:" + tag?.hash }]);
+          tagsKeyboard.push([{ text: tag.name, callback_data: "tag:" + tag?.id }]);
         }
       })
     }

@@ -88,13 +88,13 @@ class DB {//класс с расчетом на использование и в
 				storage: getRxStorageMemory()
 			});
 		}
-		if (storage == 'foundationdb'){
+		if (storage == 'foundationdb') {
 			db = await createRxDatabase({
 				name: 'db',
 				storage: getRxStorageFoundationDB()
 			});
 		}
-		if (storage == 'mongodb'){
+		if (storage == 'mongodb') {
 			db = await createRxDatabase({
 				name: 'db',
 				storage: getRxStorageMongoDB({
@@ -206,7 +206,7 @@ class DB {//класс с расчетом на использование и в
 		const tags = await query.exec();
 		var ret = [];
 		for (const tag of tags) {
-			ret.push({ name: tag.name, hash: tag.id });
+			ret.push({ name: tag.name, id: tag.id, description: tag.description });
 		}
 		//console.log("getTagChilds ret", ret);
 		return ret;
@@ -239,6 +239,24 @@ class DB {//класс с расчетом на использование и в
 			name: username
 		});
 		console.log("createUser after", ret.toJSON());
+		return ret;
+	}
+	async getTextChild(id, level = 1) {//TODO тут сложно будет. сортировку по лайкнувшим людям? вообще всем?
+		//или каждому свое показывается?
+		if (!id) return "";
+		const tags = await this.getTagChilds(id);
+		console.log("text tags", tags);
+		var ret = "\n";
+		if (level > 3) return ret;
+		for (const tag of tags) {
+			ret += "==".repeat(level) + "> " + tag.name;//TODO пока так, а потом надо будет что-то придумать
+			if (false && tag.description) { //TODO тут подумать, но вроде пока он тут не нужен.
+				//либо это настраиваемая опция?
+				ret += "\n " + tag.description
+			};
+			//ret += "\n";
+			ret += await this.getTextChild(tag.id, level + 1);
+		}
 		return ret;
 	}
 }
