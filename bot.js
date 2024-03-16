@@ -153,9 +153,11 @@ class Bot {
     const user = await this.DB.getUser(username);
     console.log("user", user.toJSON());
     //const child = await this.addTagBase(parent, arr);
-    await this.DB.addTag(user.nowtag, arr);
+    const newTag = await this.DB.addTag(user.nowtag, arr);
+    await user.incrementalPatch({nowtag: newTag.id});
     //this.touch(parent);
-    this.editTagMessage(username);
+    await this.editTagMessage(username);
+    return newTag;
   }
   async editTagMessage(username) {
     const u = await this.DB.getUser(username);//this.db.get("users").get(user).then();
@@ -392,7 +394,7 @@ class Bot {
       //if (true || state == "addtag") {//TODO пока вообще без чата. чат будет в вебе.
       var mm = text.match(/^(.+)$/igm);
       console.log("mm", mm);
-      this.addTag(username, mm);
+      const newTag = await this.addTag(username, mm);
       this.deleteMessageId(msg.chat.id, msg.message_id, 1);
       //u.get("state").put("chat");
       return;

@@ -249,7 +249,7 @@ class DB {//класс с расчетом на использование и в
 		var ret = "\n";
 		if (level > 3) return ret;
 		for (const tag of tags) {
-			ret += "==".repeat(level) + "> " + tag.name;//TODO пока так, а потом надо будет что-то придумать
+			ret += ">".repeat(level) + " " + tag.name;//TODO пока так, а потом надо будет что-то придумать
 			if (false && tag.description) { //TODO тут подумать, но вроде пока он тут не нужен.
 				//либо это настраиваемая опция?
 				ret += "\n " + tag.description
