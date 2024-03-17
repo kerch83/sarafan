@@ -248,7 +248,7 @@ class Bot {
       const tag = await this.DB.getTag(user.nowtag);
       if (c && c[1]) {//заходим в тег 
         const newTag = await this.DB.getTag(c[1]);
-        this.actionLog("in", user, [newTag.path, newTag.name]);
+        this.actionLog("in", user, [newTag?.path, newTag?.name]);
         if (newTag){
           await user.incrementalPatch({nowtag: newTag.id});
         }
