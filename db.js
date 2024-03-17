@@ -264,7 +264,7 @@ class DB {//класс с расчетом на использование и в
 		console.log("createUser after", ret.toJSON());
 		return ret;
 	}
-	async getTextChild(id, level = 1) {//TODO тут сложно будет. сортировку по лайкнувшим людям? вообще всем?
+	async getTextChild(id, level = 2) {//TODO тут сложно будет. сортировку по лайкнувшим людям? вообще всем?
 		//или каждому свое показывается?
 		if (!id) return "";
 		const tags = await this.getTagChilds(id);
@@ -283,6 +283,15 @@ class DB {//класс с расчетом на использование и в
 			ret += await this.getTextChild(tag.id, level + 1);
 		}
 		return ret;
+	}
+	async getTextRoot(id, level = 3){//level настраивается юзером в настроках?
+		if (level < 0) {return ""}
+		const tag = await this.getTag(id);
+		var tree = "";
+		if (tag.parent_id){
+			tree = await this.getTextRoot(tag.parent_id, level - 1);
+		}
+		return tree + "\n" + ">>".repeat(level) + " " + tag.name;
 	}
 }
 
