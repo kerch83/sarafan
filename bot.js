@@ -91,7 +91,7 @@ class Bot {
         ret += childs;
       }
     }
-    return ret;
+    return ret.substring(0, 4095);
     return "вы находитесь в сообществе " + value.path + value.name + "\n" + (value.description ?? "описание сообщества/можно добавить своё");
   }
   async initUser(u) {
@@ -99,7 +99,9 @@ class Bot {
     const user = await this.DB.createUser(u);
     console.log("initUser after create", user?.name);
     await user.incrementalPatch({
-      nowtag: this.startTag
+      nowtag: this.startTag,
+      deep_level: 1,
+      show_decription: true
     });
     return user;
   }
@@ -136,6 +138,11 @@ class Bot {
       //var user = await this.DB.getUser(msg.from.id);
       //if (!user) user = await this.initUser(msg.from);
       const user = await this.getUserOrCreate(msg.from);
+      await user.incrementalPatch({
+        nowtag: this.startTag,
+        deep_level: 1,
+        show_decription: true
+      });
       this.actionLog('start', user);
       //console.log("+++", username, "start");
       this.deleteMessageId(msg.chat.id, msg.message_id, 0);
