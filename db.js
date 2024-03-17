@@ -48,7 +48,7 @@ const tagSchema = {//TODO добавить юзера-создателя и по
 }
 
 const userSchema = {
-	version: 1,
+	version: 2,
 	primaryKey: 'id',
 	type: 'object',
 	properties: {
@@ -56,7 +56,7 @@ const userSchema = {
 			type: 'string',
 			maxLength: 100
 		},
-		name: {//внезапно оказалось что его может и не быть))
+		name: {
 			type: 'string'
 		},
 		first_name: {
@@ -76,6 +76,12 @@ const userSchema = {
 		},
 		message_id: {
 			type: 'integer'
+		},
+		deep_level: {
+			type: 'integer'
+		},
+		show_decription: {
+			type: 'boolean'
 		}
 	},
 	required: ['id']
@@ -123,10 +129,15 @@ class DB {//класс с расчетом на использование и в
 				schema: userSchema,
 				migrationStrategies: {
 					// 1 means, this transforms data from version 0 to version 1
-					1: function(oldDoc){
+					1: function (oldDoc) {
+						return oldDoc;
+					},
+					2: function (oldDoc) {
+						oldDoc.deep_level = 1;
+						oldDoc.show_decription = true;
 						return oldDoc;
 					}
-				}				
+				}
 			}
 		});
 		this.rx = db;
@@ -264,31 +275,31 @@ class DB {//класс с расчетом на использование и в
 		console.log("createUser after", ret.toJSON());
 		return ret;
 	}
-	async getTextChild(id, level = 2) {//TODO тут сложно будет. сортировку по лайкнувшим людям? вообще всем?
+	async getTextChild(id, level = 0, user) {//TODO тут сложно будет. сортировку по лайкнувшим людям? вообще всем?
 		//или каждому свое показывается?
 		if (!id) return "";
 		const tags = await this.getTagChilds(id);
-		//console.log("text tags", tags);
+		//console.log("getTextChild", level, id);
 		var ret = "\n";
-		if (level > 1) return ret;
+		if (level < 1) return ret;
 		for (const tag of tags) {
-			ret += ">".repeat(level) + " " + tag.name;//TODO пока так, а потом надо будет что-то придумать
-			if (false && tag.description) { //TODO тут подумать, но вроде пока он тут не нужен.
+			ret += ">".repeat(user?.deep_level - level + 1) + " " + tag.name;//TODO пока так, а потом надо будет что-то придумать
+			if (user?.show_decription && tag.description) { //TODO тут подумать, но вроде пока он тут не нужен.
 				//либо это настраиваемая опция?
 				//TODO если это ссылка - то добавлять её к имени
 				//в принципе любая первая ссылка из описания?
-				ret += "\n " + tag.description
+				ret += "\n" + tag.description
 			};
 			//ret += "\n";
-			ret += await this.getTextChild(tag.id, level + 1);
+			ret += await this.getTextChild(tag.id, level - 1, user);
 		}
 		return ret;
 	}
-	async getTextRoot(id, level = 3){//level настраивается юзером в настроках?
-		if (level < 0) {return ""}
+	async getTextRoot(id, level = 3) {//level настраивается юзером в настроках?
+		if (level < 0) { return "" }
 		const tag = await this.getTag(id);
 		var tree = "";
-		if (tag.parent_id){
+		if (tag.parent_id) {
 			tree = await this.getTextRoot(tag.parent_id, level - 1);
 		}
 		return tree + "\n" + ">>".repeat(level) + " " + tag.name;

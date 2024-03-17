@@ -41,7 +41,7 @@ class Bot {
     if (!u) return;
     //console.log("editMessage", user.id, u?.name, u?.toJSON());
     const t = await this.DB.getTag(u.nowtag);//await this.db.get("users").get(user).get("nowtag").then();
-    const text = await this.tagText(t);
+    const text = await this.tagText(t, u);
     const treeTags = await this.DB.getTagChilds(t?.id);
     const keyboard = await this.keyboard(t ? "tags" : "root", treeTags, u.state);
     //console.log("editTagMessage", u.id, u.message_id, text, keyboard);
@@ -62,7 +62,7 @@ class Bot {
     }
 
   }
-  async tagText(value, params = {description: true}) {
+  async tagText(value, user) {
     //console.log("tagText", value?.toJSON());
     var ret = "";
     if (value) {
@@ -70,22 +70,25 @@ class Bot {
       if (value?.description) {
         ret += "\n----- описание -----\n" + value.description;
       };
-      if (true){//TODO сделать выключение помощи
-        ret += "\n----- помощь -----";
+      if (true) {//TODO сделать выключение помощи
+        ret += "\n----- помощь - убрать - /help_off -----";
         ret += "\nможно добавить свое сообщение/ветку/объявление - отправьте его (первая строка заголовок, остальное описание)";
         ret += "\nоткрыть сообщение - нажмите на него в меню";
         ret += "\n⬆️ - перейти на уровень выше";
         ret += "\n❤️ - подписаться на ветку";
         ret += "\n✂️ - вырезать ветку";
         ret += "\nотправить геопозицию(любую, не обязательно свою!!) - попасть в ветку(🌍) нужного вам локального сообщества и подписаться на него";
-        }  
+      }
     }
-    if (!ret || ret == '') { ret = "👁️"};// список открытых сообществ\nможно добавить свое, отправьте его название(опционально с новой строчки можно добавить описание)" }
-    if (value){//TODO тут подумать, нужно ли в корне тоже суммарное?
+    if (!ret || ret == '') { ret = "👁️" };// список открытых сообществ\nможно добавить свое, отправьте его название(опционально с новой строчки можно добавить описание)" }
+    if (value) {//TODO тут подумать, нужно ли в корне тоже суммарное?
       //думаю нужно, но только тех сообществ, на которые подписан
-      const childs = await this.DB.getTextChild(value?.id);
-      if (false && childs){
-        ret = ret + "\n----------------------" + childs;
+      const childs = await this.DB.getTextChild(value?.id, user?.deep_level, user);
+      if (childs) {
+        if (true) {
+          ret = ret + "\n----- дерево (уровень " + String(user?.deep_level) + ")-----\nнастроить глубину - /level 0-5\nскрыть/показать описание - /show_description";
+        };
+        ret += childs;
       }
     }
     return ret;
@@ -110,16 +113,16 @@ class Bot {
     var user = await this.getUserOrCreate(u);
     var nowtag = await this.DB.getTag(user.nowtag);//await user.get("nowtag").then();
     console.log("nowtag", nowtag?.toJSON());
-    var text = await this.tagText(nowtag, user.state);
+    var text = await this.tagText(nowtag, user);
     const treeTags = await this.DB.getTagChilds(nowtag?.id);
     const keyboard = await this.keyboard(nowtag ? "tags" : "root", treeTags, user.state);
     const msg = await this.bot.sendMessage(u.id, text, keyboard);
     await user.incrementalPatch({ message_id: msg.message_id });
   }
-  actionLog(act, user, info = ''){
+  actionLog(act, user, info = '') {
     console.log("++++action", act, user?.name ?? user?.username ?? '', user?.first_name ?? '', user?.last_name ?? '', info);
   }
-  async  getUserOrCreate(user){
+  async getUserOrCreate(user) {
     var u = await this.DB.getUser(user.id);
     if (!u) u = await this.initUser(user);
     return u;
@@ -172,7 +175,7 @@ class Bot {
       const username = msg.from.username;
       const user = await this.getUserOrCreate(msg.from);
       this.actionLog("location", user, geotree);
-      await user.incrementalPatch({nowtag: geo});
+      await user.incrementalPatch({ nowtag: geo });
       //this.db.get("users").get(username).get("nowtag").put(geo);
       this.deleteMessageId(msg.chat.id, msg.message_id, 0);
       this.onTags(msg.from);
@@ -205,7 +208,25 @@ class Bot {
       //console.log("/me call", msg.from.username);
       var user = await this.getUserOrCreate(msg.from);
       this.actionLog("/help", user);
-      await user.incrementalPatch({nowtag: '30543ed15339fbce5aeef0aab97d282f'});
+      await user.incrementalPatch({ nowtag: '30543ed15339fbce5aeef0aab97d282f' });
+      this.editTagMessage(msg.from);
+    });
+    this.bot.onText(/^\/level *(.*)$/gmi, async (msg, match) => {
+      console.log("/level ", msg.from.username, match);
+      var level = match[1];
+      if (level == "" || level < 0 || level > 5) {
+        level = 0;
+      }
+      var user = await this.getUserOrCreate(msg.from);
+      this.actionLog("/level", user, level);
+      await user.incrementalPatch({ deep_level: level });
+      this.editTagMessage(msg.from);
+    });
+    this.bot.onText(/^\/show_description$/gmi, async (msg, match) => {
+      var user = await this.getUserOrCreate(msg.from);
+      const newDescription = !user.show_decription;
+      this.actionLog("/show_description", user, newDescription);
+      await user.incrementalPatch({ show_decription: newDescription });
       this.editTagMessage(msg.from);
     });
 
@@ -259,14 +280,14 @@ class Bot {
       if (c && c[1]) {//заходим в тег 
         const newTag = await this.DB.getTag(c[1]);
         this.actionLog("in", user, [newTag?.path, newTag?.name]);
-        if (newTag){
-          await user.incrementalPatch({nowtag: newTag.id});
+        if (newTag) {
+          await user.incrementalPatch({ nowtag: newTag.id });
         }
       }
       if (command == "up" && tag) {
         if (tag?.name) {
           this.actionLog("up", user, [tag.path, tag.name]);
-          await user.incrementalPatch({nowtag: tag.parent_id});
+          await user.incrementalPatch({ nowtag: tag.parent_id });
         } else {
           this.bot.sendMessage(data.chat.id, "вы уже в корне дерева, выше некуда(").then(msg => {
             this.deleteMessageId(data.chat.id, msg.message_id);
@@ -394,10 +415,10 @@ class Bot {
               {
                 text: `⌛`,
                 callback_data: publicMode ? 'private' : 'public'
-              },              {
+              }, {
                 text: publicMode ? `🔒` : `👁️`,
                 callback_data: publicMode ? 'private' : 'public'
-              },              {
+              }, {
                 text: true ? `⚙️` : `👁️`,
                 callback_data: publicMode ? 'private' : 'public'
               }
