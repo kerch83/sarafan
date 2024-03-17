@@ -27,13 +27,11 @@ class Bot {
     return;
   }
   async addTag(u, arr) {
-    //const user = await this.DB.getUser(u.id);
     const user = await this.getUserOrCreate(u);
-    //console.log("user", user.toJSON());
-    //const child = await this.addTagBase(parent, arr);
     const newTag = await this.DB.addTag(user.nowtag, arr);
-    await user.incrementalPatch({nowtag: newTag.id});
-    //this.touch(parent);
+    //await user.incrementalPatch({nowtag: newTag.id});
+    //TODO здесь надо подумать как лучше, проваливаться в тег или нет
+    //TODO надо сделать здесь подписку на созданный тег
     await this.editTagMessage(u);
     return newTag;
   }
@@ -70,9 +68,10 @@ class Bot {
     if (value) {
       ret = await this.DB.getTextRoot(value?.id);
       ret += "\nвы находитесь в ветке " + value?.name + "\nвы можете добавить сюда свое сообщение отправив его";
+      ret += "\nможно открыть(раскрыть описание сообщения, увидеть комментарии и ответить) сообщения нажав на них";
       
       if (value?.description) {
-        ret += "\n--------------------\n" + value.description;
+        ret += "\n----- описание ветки "+ value.name +" ---------------\n" + value.description;
       };
     }
     if (!ret || ret == '') { ret = "👁️"};// список открытых сообществ\nможно добавить свое, отправьте его название(опционально с новой строчки можно добавить описание)" }
