@@ -385,6 +385,7 @@ class Bot {
     }
     if (id == "tags") {
       return {
+        parse_mode: 'Markdown', 
         reply_markup: {
           inline_keyboard: [
             [
