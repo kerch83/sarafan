@@ -54,7 +54,8 @@ class Bot {
         {
           chat_id: u.id,
           message_id: u.message_id,
-          reply_markup: keyboard.reply_markup
+          reply_markup: keyboard.reply_markup,
+          parse_mode: 'Markdown'
         });
       //console.log("editMessage ret", ret.message_id);
     } catch (e) {
@@ -65,12 +66,15 @@ class Bot {
   async tagText(value, user) {
     //console.log("tagText", value?.toJSON());
     var ret = "";
+    var count = 0;
     if (value) {
-      ret = await this.DB.getTextRoot(value?.id);
-      if (value?.description) {
-        ret += "\n----- описание -----\n" + value.description;
+      [ret, count] = await this.DB.getTextRoot(value?.id);
+      ret += " " + "<".repeat(count) + " __ВЫ ЗДЕСЬ__ )";
+      if (value?.description && user?.show_decription) {
+        //ret += "\n----- описание -----\n" + 
+        ret += "\n" + value.description;
       };
-      if (true) {//TODO сделать выключение помощи
+      if (false) {//TODO сделать выключение помощи
         ret += "\n----- помощь - убрать - /help_off -----";
         ret += "\nможно добавить свое сообщение/ветку/объявление - отправьте его (первая строка заголовок, остальное описание)";
         ret += "\nоткрыть сообщение - нажмите на него в меню";
@@ -83,9 +87,9 @@ class Bot {
     if (!ret || ret == '') { ret = "👁️" };// список открытых сообществ\nможно добавить свое, отправьте его название(опционально с новой строчки можно добавить описание)" }
     if (value) {//TODO тут подумать, нужно ли в корне тоже суммарное?
       //думаю нужно, но только тех сообществ, на которые подписан
-      const childs = await this.DB.getTextChild(value?.id, user?.deep_level, user);
+      const childs = await this.DB.getTextChild(value?.id, user?.deep_level, user, count);
       if (childs) {
-        if (true) {
+        if (false) {
           ret = ret + "\n----- дерево (уровень " + String(user?.deep_level) + ")-----\nнастроить глубину - /level 0-5\nскрыть/показать описание - /show_description";
         };
         ret += childs;

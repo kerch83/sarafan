@@ -275,7 +275,7 @@ class DB {//класс с расчетом на использование и в
 		console.log("createUser after", ret.toJSON());
 		return ret;
 	}
-	async getTextChild(id, level = 0, user) {//TODO тут сложно будет. сортировку по лайкнувшим людям? вообще всем?
+	async getTextChild(id, level = 0, user, count) {//TODO тут сложно будет. сортировку по лайкнувшим людям? вообще всем?
 		//или каждому свое показывается?
 		if (!id) return "";
 		const tags = await this.getTagChilds(id);
@@ -283,7 +283,7 @@ class DB {//класс с расчетом на использование и в
 		var ret = "\n";
 		if (level < 1) return ret;
 		for (const tag of tags) {
-			ret += ">".repeat(user?.deep_level - level + 1) + " " + tag.name;//TODO пока так, а потом надо будет что-то придумать
+			ret += ">".repeat(user?.deep_level - level + 1 + count) + " " + tag.name;//TODO пока так, а потом надо будет что-то придумать
 			if (user?.show_decription && tag.description) { //TODO тут подумать, но вроде пока он тут не нужен.
 				//либо это настраиваемая опция?
 				//TODO если это ссылка - то добавлять её к имени
@@ -291,18 +291,27 @@ class DB {//класс с расчетом на использование и в
 				ret += "\n" + tag.description
 			};
 			//ret += "\n";
-			ret += await this.getTextChild(tag.id, level - 1, user);
+			ret += await this.getTextChild(tag.id, level - 1, user, count);
 		}
 		return ret;
 	}
 	async getTextRoot(id, level = 3) {//level настраивается юзером в настроках?
-		if (level < 0) { return "" }
+		if (level < 0) { return ["", 0] }
 		const tag = await this.getTag(id);
 		var tree = "";
-		if (tag.parent_id) {
-			tree = await this.getTextRoot(tag.parent_id, level - 1);
+		var count = 0;
+		var name = tag.name;
+		if (level == 3){
+			name = "*" + tag.name + "*";
 		}
-		return tree + "\n" + ">>".repeat(level) + " " + tag.name;
+		if (tag.parent_id) {
+			[tree, count] = await this.getTextRoot(tag.parent_id, level - 1);
+		}
+//		var name = tag.name;
+//		if (count == 0){
+
+//		}
+		return [tree + "\n" + ">".repeat(count+1) + " " + name, count + 1];
 	}
 }
 
