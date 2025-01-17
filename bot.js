@@ -1,4 +1,4 @@
-import pkg from './package.json' assert { type: "json" };
+import pkg from './package.json' with { type: "json" };
 import TelegramBot from 'node-telegram-bot-api';
 import nominatim from 'nominatim-client';
 import md5 from 'md5';
